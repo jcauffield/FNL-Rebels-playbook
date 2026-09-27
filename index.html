@@ -47,6 +47,11 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .name-editor{position:absolute;left:50%;top:68px;transform:translateX(-50%);z-index:30;width:min(82%,340px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;display:none}
 .name-editor.open{display:block}.name-editor .row{display:flex;gap:8px}.name-editor input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);padding:10px}
 .small{font-size:12px;color:var(--muted);margin-bottom:6px}
+.auth-box{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(18,35,63,.72)}
+.auth-row{display:flex;gap:8px;align-items:center}
+.auth-row input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);padding:10px}
+.auth-status{font-size:12px;color:var(--muted);margin-bottom:8px}
+.sync-note{font-size:11px;color:var(--muted);margin-top:8px}
 @media (min-width:700px){.field-wrap{border-left:1px solid var(--line);border-right:1px solid var(--line)}}
 </style>
 </head>
@@ -115,13 +120,30 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 
 <dialog id="playsDialog"><div class="sheet">
   <h3>Playbook</h3><p>Every new play starts in REBEL.</p>
+  <div id="authBox" class="auth-box">
+    <div id="authSignedOut">
+      <div class="auth-status">Sign in to share plays with your coaching staff.</div>
+      <div class="auth-row"><input id="coachEmail" type="email" inputmode="email" autocomplete="email" placeholder="Coach email"><button id="magicLinkBtn" class="pill">Send Link</button></div>
+      <div id="authMessage" class="sync-note"></div>
+    </div>
+    <div id="authSignedIn" hidden>
+      <div id="signedInAs" class="auth-status"></div>
+      <div class="auth-row"><button id="refreshCloudBtn" class="pill">↻ Sync Plays</button><button id="signOutBtn" class="pill">Sign Out</button></div>
+      <div id="syncStatus" class="sync-note">Shared cloud playbook connected.</div>
+    </div>
+  </div>
   <div class="grid"><button id="newBtn" class="pill">New REBEL Play</button><button id="saveBtn" class="pill">Save Play</button></div>
   <div id="savedList" class="list"></div>
   <button id="closeDialog" class="pill wide" style="margin-top:14px">Close</button>
 </div></dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const $=s=>document.querySelector(s), ns="http://www.w3.org/2000/svg";
+const SUPABASE_URL="https://wyktmcyvduinskonsdwr.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_yPM8lMOgGX9gqo7_Nuubxg_OckQb8Ch";
+const cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+let sessionUser=null,currentCloudId=null,cloudSyncTimer=null;
 const BASE={X:{x:55,y:432},C:{x:210,y:380},Z:{x:345,y:432},QB:{x:210,y:428},Y:{x:166,y:508},H:{x:254,y:508}};
 const ORDER=["X","C","Z","QB","Y","H"];
 let players=clone(BASE),routes=emptyRoutes(),fakes=emptyFakes(),selected="H",drawing=false,raf=null;
@@ -201,8 +223,8 @@ $("#playBtn").onclick=()=>{
   raf=requestAnimationFrame(tick);
 };
 $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("#football").setAttribute("transform","translate(0 0)")};
-$("#playsBtn").onclick=()=>$("#playsDialog").showModal();$("#closeDialog").onclick=()=>$("#playsDialog").close();
-function snap(){return{name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:clone(players),routes:clone(routes),fakes:clone(fakes)}}
+$("#playsBtn").onclick=async()=>{$("#playsDialog").showModal();if(sessionUser)await loadCloudPlays()};$("#closeDialog").onclick=()=>$("#playsDialog").close();
+function snap(){return{id:currentCloudId||undefined,name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:clone(players),routes:clone(routes),fakes:clone(fakes)}}
 function normalizePlay(p){if(p.action&&p.target)return p;const isPass=(p.name||"").toUpperCase().includes("PASS")||p.ball==="QB";return {...p,action:isPass?"PASS":"HANDOFF",target:isPass?"X":(p.ball||"H")}}
 function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v.map(normalizePlay)}catch{}return defaults()}
 function persist(){localStorage.setItem("fnlRebelsPlays",JSON.stringify(saved))}
@@ -211,12 +233,91 @@ function defaults(){return[
 {name:"REBEL COUNTER",action:"HANDOFF",target:"Y",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:195,y:478},{x:285,y:428},{x:350,y:368}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}},
 {name:"REBEL JET PASS",action:"PASS",target:"X",players:clone(BASE),routes:{X:[{x:55,y:350},{x:120,y:280}],C:[{x:210,y:292}],Z:[{x:345,y:350},{x:300,y:280}],QB:[],Y:[{x:166,y:432},{x:220,y:380}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}}
 ]}
-function renderSaved(){const box=$("#savedList");box.innerHTML="";saved.forEach((p,i)=>{const row=document.createElement("div");row.className="saved";const load=document.createElement("button");load.className="pill";load.textContent=p.name;load.onclick=()=>{p=normalizePlay(p);players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();choose("H")};const del=document.createElement("button");del.className="pill";del.textContent="Delete";del.onclick=()=>{saved.splice(i,1);persist();renderSaved()};row.append(load,del);box.append(row)})}
-function saveCurrentPlay(){const s=snap(),i=saved.findIndex(p=>p.name===s.name);if(i>=0)saved[i]=s;else saved.push(s);persist();renderSaved();const b=$("#diagramSaveBtn");if(b){const old=b.innerHTML;b.innerHTML='<svg viewBox="0 0 24 24" width="42" height="42" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.2 16.6-4.4-4.4 1.4-1.4 3 3 8.6-8.6 1.4 1.4-10 10Z"/></svg>';setTimeout(()=>b.innerHTML=old,700)}}
+function renderSaved(){const box=$("#savedList");box.innerHTML="";saved.forEach((p,i)=>{const row=document.createElement("div");row.className="saved";const load=document.createElement("button");load.className="pill";load.textContent=p.name;load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();choose("H")};const del=document.createElement("button");del.className="pill";del.textContent="Delete";del.onclick=async()=>{if(p.id&&sessionUser){const {error}=await cloud.from("plays").delete().eq("id",p.id);if(error){$("#syncStatus").textContent="Delete failed: "+error.message;return}await loadCloudPlays()}else{saved.splice(i,1);persist();renderSaved()}};row.append(load,del);box.append(row)})}
+async function saveCurrentPlay(){
+  const p=snap(),i=saved.findIndex(x=>(p.id&&x.id===p.id)||(!p.id&&x.name===p.name));
+  if(i>=0)saved[i]=p;else saved.push(p);
+  persist();renderSaved();
+  const b=$("#diagramSaveBtn"),old=b?b.innerHTML:"";
+  if(b)b.innerHTML='<svg viewBox="0 0 24 24" width="42" height="42" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.2 16.6-4.4-4.4 1.4-1.4 3 3 8.6-8.6 1.4 1.4-10 10Z"/></svg>';
+  if(sessionUser){
+    const payload={name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes};
+    let result;
+    if(currentCloudId){
+      result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select().single();
+    }else{
+      const existing=await cloud.from("plays").select("id").eq("name",p.name).limit(1);
+      if(existing.data&&existing.data.length){
+        currentCloudId=existing.data[0].id;
+        result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select().single();
+      }else{
+        result=await cloud.from("plays").insert(payload).select().single();
+      }
+    }
+    if(result.error){
+      $("#syncStatus").textContent="Cloud save failed. Saved on this phone.";
+      console.error(result.error);
+    }else{
+      currentCloudId=result.data.id;
+      $("#syncStatus").textContent="Saved to shared playbook.";
+      await loadCloudPlays(false);
+    }
+  }else{
+    $("#authMessage").textContent="Saved on this phone. Sign in to share it.";
+  }
+  if(b)setTimeout(()=>b.innerHTML=old,700);
+}
 $("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
-$("#newBtn").onclick=()=>{players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();choose("H")};
-renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";draw();
+$("#newBtn").onclick=()=>{currentCloudId=null;players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();choose("H")};
+async function loadCloudPlays(showStatus=true){
+  if(!sessionUser)return;
+  if(showStatus)$("#syncStatus").textContent="Syncing shared playbook…";
+  const {data,error}=await cloud.from("plays").select("*").order("updated_at",{ascending:false});
+  if(error){$("#syncStatus").textContent="Sync failed. Showing saved phone copy.";return}
+  saved=(data||[]).map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at}));
+  persist();renderSaved();
+  $("#syncStatus").textContent="Shared playbook synced.";
+}
+async function migrateLocalPlays(){
+  if(!sessionUser)return;
+  const locals=loadSaved().filter(p=>!p.id);
+  for(const p0 of locals){
+    const p=normalizePlay(p0);
+    const {data:match}=await cloud.from("plays").select("id").eq("name",p.name).limit(1);
+    if(!match||!match.length){
+      await cloud.from("plays").insert({name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes});
+    }
+  }
+}
+async function refreshAuthUI(){
+  const {data:{session}}=await cloud.auth.getSession();
+  sessionUser=session?.user||null;
+  $("#authSignedOut").hidden=!!sessionUser;
+  $("#authSignedIn").hidden=!sessionUser;
+  if(sessionUser){
+    $("#signedInAs").textContent="Signed in as "+(sessionUser.email||"coach");
+    await migrateLocalPlays();
+    await loadCloudPlays(false);
+    if(cloudSyncTimer)clearInterval(cloudSyncTimer);
+    cloudSyncTimer=setInterval(()=>{if(document.visibilityState==="visible")loadCloudPlays(false)},30000);
+  }else{
+    if(cloudSyncTimer){clearInterval(cloudSyncTimer);cloudSyncTimer=null}
+  }
+}
+$("#magicLinkBtn").onclick=async()=>{
+  const email=$("#coachEmail").value.trim();
+  if(!email){$("#authMessage").textContent="Enter your email first.";return}
+  $("#authMessage").textContent="Sending sign-in link…";
+  const redirectTo=location.origin+location.pathname;
+  const {error}=await cloud.auth.signInWithOtp({email,options:{emailRedirectTo:redirectTo}});
+  $("#authMessage").textContent=error?error.message:"Check your email for the sign-in link.";
+};
+$("#signOutBtn").onclick=async()=>{await cloud.auth.signOut();sessionUser=null;currentCloudId=null;saved=loadSaved();renderSaved();await refreshAuthUI()};
+$("#refreshCloudBtn").onclick=()=>loadCloudPlays();
+cloud.auth.onAuthStateChange(()=>setTimeout(refreshAuthUI,0));
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&sessionUser)loadCloudPlays(false)});
+renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";draw();refreshAuthUI();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
 </body>
