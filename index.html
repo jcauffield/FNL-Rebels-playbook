@@ -16,7 +16,7 @@ button,select,input{font:inherit}
 .top-left{position:absolute;left:10px;top:max(10px,env(safe-area-inset-top));z-index:20}
 .top-right-stack{position:absolute;right:10px;top:max(10px,env(safe-area-inset-top));z-index:20;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
 .save-icon{width:42px;min-width:42px;padding:0;color:#fff;display:flex;align-items:center;justify-content:center}
-.save-icon svg{display:block;width:36px;height:36px}
+.save-icon svg{display:block;width:40px;height:40px;transform:scale(1.6);transform-origin:center}
 .pill{min-height:42px;border-radius:999px;border:1px solid var(--line);background:rgba(18,35,63,.96);color:var(--text);padding:0 14px;font-weight:800;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .heading{position:absolute;top:max(8px,env(safe-area-inset-top));left:84px;right:84px;z-index:19;text-align:center;pointer-events:none}
 .name-row{display:flex;justify-content:center;align-items:center;gap:4px;pointer-events:auto}
@@ -55,7 +55,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   <div class="field-wrap">
     <button id="playsBtn" class="pill top-left">☰ Plays</button>
     <div class="top-right-stack">
-      <button id="diagramSaveBtn" class="pill save-icon" aria-label="Save play" title="Save play"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M5 3h12.6L21 6.4V21H3V3h2Zm1 2v5h10V5H6Zm-1 8v6h14V8.1L16.9 5H18v8H5Zm3 2h8v4H8v-4Z"/></svg></button>
+      <button id="diagramSaveBtn" class="pill save-icon" aria-label="Save play" title="Save play"><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true" focusable="false"><path fill="currentColor" d="M5 3h12.6L21 6.4V21H3V3h2Zm1 2v5h10V5H6Zm-1 8v6h14V8.1L16.9 5H18v8H5Zm3 2h8v4H8v-4Z"/></svg></button>
       <button id="playBtn" class="pill">▶ Play</button>
     </div>
 
