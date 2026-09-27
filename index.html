@@ -20,7 +20,8 @@ button,select,input{font:inherit}
 .name-row{display:flex;justify-content:center;align-items:center;gap:4px;pointer-events:auto}
 .play-name{border:0;background:transparent;color:var(--text);font-weight:900;font-size:16px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .edit{border:0;background:transparent;color:var(--muted);font-size:16px;padding:4px}
-.ball-control{pointer-events:auto;display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:rgba(18,35,63,.96);border-radius:999px;padding:3px 8px;margin-top:2px;font-size:9px;font-weight:900;color:var(--muted)}
+.ball-row{pointer-events:auto;margin-top:2px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
+.ball-control{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:rgba(18,35,63,.96);border-radius:999px;padding:3px 8px;font-size:9px;font-weight:900;color:var(--muted)}
 .ball-control select{border:0;background:transparent;color:var(--text);font-weight:900;font-size:11px}
 svg{width:100%;height:100%;display:block;background:linear-gradient(#102b49,#0d2440)}
 .route-wrap{position:absolute;right:8px;top:104px;z-index:18;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
@@ -29,10 +30,12 @@ svg{width:100%;height:100%;display:block;background:linear-gradient(#102b49,#0d2
 .route-rail{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .route-rail.hidden{display:none}
 .route-pill{height:34px;min-width:72px;padding:0 10px;font-size:9px;white-space:nowrap}
-.bottom-center{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(58px + env(safe-area-inset-bottom));z-index:18}
+.bottom-center{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(8px + env(safe-area-inset-bottom));z-index:18}
 .selected{min-height:42px;border-radius:999px;border:1px solid var(--line);background:rgba(18,35,63,.96);padding:0 14px;font-weight:900;font-size:11px;color:var(--text)}
 .bottom-controls{position:absolute;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:18;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
-.legend{position:absolute;left:8px;bottom:calc(60px + env(safe-area-inset-bottom));z-index:17;font-size:9px;color:var(--muted);background:rgba(18,35,63,.92);border:1px solid var(--line);border-radius:999px;padding:5px 8px}
+.bottom-keys{position:absolute;left:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:17;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.key{font-size:8px;color:var(--muted);background:rgba(18,35,63,.92);border:1px solid var(--line);border-radius:999px;padding:5px 8px;white-space:nowrap}
+.key.pass{color:#ff8a80}
 dialog{width:min(92vw,480px);border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--text);padding:0}
 dialog::backdrop{background:rgba(0,0,0,.55)}
 .sheet{padding:16px}.sheet h3{margin:0 0 4px}.sheet p{margin:0 0 16px;color:var(--muted);font-size:13px}
@@ -56,9 +59,10 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
         <button id="playName" class="play-name">REBEL JET</button>
         <button id="editName" class="edit" aria-label="Edit play name">✎</button>
       </div>
-      <label class="ball-control">BALL → <select id="ballTo">
-        <option>QB</option><option selected>H</option><option>Y</option><option>X</option><option>Z</option><option>C</option>
-      </select></label>
+      <div class="ball-row">
+        <label class="ball-control">ACTION <select id="actionType"><option>HANDOFF</option><option>PASS</option></select></label>
+        <label class="ball-control">TO <select id="ballTarget"><option>H</option><option>Y</option><option>X</option><option>Z</option><option>C</option></select></label>
+      </div>
     </div>
 
     <div id="nameEditor" class="name-editor">
@@ -76,8 +80,8 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
       <line x1="0" y1="380" x2="420" y2="380" stroke="#ffca28" stroke-width="4"/>
       <text x="14" y="366" fill="#9fb1c7" font-size="12" font-weight="800">LINE OF SCRIMMAGE</text>
       <text x="210" y="130" text-anchor="middle" fill="#9fb1c7" font-size="12" font-weight="800">DEFENSE</text>
-      <text x="210" y="704" text-anchor="middle" fill="#9fb1c7" font-size="12" font-weight="800">OFFENSE</text>
-      <g id="routes"></g><g id="players"></g>
+      <text x="210" y="675" text-anchor="middle" fill="#9fb1c7" font-size="12" font-weight="800">OFFENSE</text>
+      <g id="routes"></g><g id="passLayer"></g><g id="players"></g>
       <g id="football"><ellipse cx="210" cy="396" rx="12" ry="7" fill="#8d5524" transform="rotate(-20 210 396)"/>
         <path d="M205 393 L215 399 M208 392 L210 398 M211 393 L213 399" stroke="#fff" stroke-width="1.5"/></g>
     </svg>
@@ -98,7 +102,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
       </div>
     </div>
 
-    <div class="legend">Solid = real • Dashed = fake</div>
+    <div class="bottom-keys"><div class="key pass">▲ ▲ ▲ = pass</div><div class="key">Solid = route • Dashed = fake</div></div>
     <div class="bottom-center"><button id="selected" class="selected">H selected</button></div>
     <div class="bottom-controls"><button id="drawBtn" class="pill">✏ Draw</button><button id="resetBtn" class="pill">↺ Reset</button></div>
   </div>
@@ -121,6 +125,9 @@ function clone(v){return JSON.parse(JSON.stringify(v))}
 function emptyRoutes(){return {X:[],C:[],Z:[],QB:[],Y:[],H:[]}}
 function emptyFakes(){return {X:false,C:false,Z:false,QB:false,Y:false,H:false}}
 function E(t,a={}){const e=document.createElementNS(ns,t);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,v));return e}
+function endpoint(n){const a=routes[n];return a&&a.length?a[a.length-1]:players[n]}
+function triangle(cx,cy,angle,size=7){const pts=[[size,0],[-size*.65,size*.65],[-size*.65,-size*.65]].map(([x,y])=>{const c=Math.cos(angle),sn=Math.sin(angle);return `${cx+x*c-y*sn},${cy+x*sn+y*c}`}).join(" ");return E("polygon",{points:pts,fill:"#ff5252"})}
+function drawPass(){const layer=$("#passLayer");layer.innerHTML="";if($("#actionType").value!=="PASS")return;const from=endpoint("QB"),to=endpoint($("#ballTarget").value),dx=to.x-from.x,dy=to.y-from.y,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx),count=Math.max(4,Math.floor(dist/35));for(let i=1;i<=count;i++){const f=i/(count+1);layer.append(triangle(from.x+dx*f,from.y+dy*f,ang,i===count?8:6))}}
 function setName(v){const n=(v||"").trim()||"Untitled REBEL Play";$("#playName").textContent=n;$("#nameInput").value=n}
 function choose(n){selected=n;$("#selected").textContent=n+(fakes[n]?" FAKE":" selected");draw()}
 function draw(){
@@ -137,6 +144,7 @@ function draw(){
     const g=E("g",{"data-player":n,role:"button"}),c=E("circle",{cx:players[n].x,cy:players[n].y,r:n===selected?25:22,fill:n===selected?"#52252d":"#12233f",stroke:n===selected?"#ef5350":"#f6f8fb","stroke-width":n===selected?4:2.5});
     const t=E("text",{x:players[n].x,y:players[n].y+5,"text-anchor":"middle",fill:"#f6f8fb","font-size":15,"font-weight":900});t.textContent=n;g.append(c,t);g.addEventListener("click",e=>{e.stopPropagation();choose(n)});$("#players").append(g)
   });
+  drawPass();
 }
 function preset(k){
   const s=players[selected],side=s.x<210?-1:1;let r=[];
@@ -155,6 +163,7 @@ function preset(k){
 }
 document.querySelectorAll("[data-route]").forEach(b=>b.addEventListener("click",()=>preset(b.dataset.route)));
 $("#routeToggle").onclick=()=>{const r=$("#routeRail"),hide=!r.classList.contains("hidden");r.classList.toggle("hidden",hide);$("#routeToggle").textContent=hide?"Routes ▾":"Routes ▴"};
+$("#actionType").onchange=draw;$("#ballTarget").onchange=draw;
 $("#drawBtn").onclick=()=>{drawing=!drawing;$("#drawBtn").textContent=drawing?"✓ Finish":"✏ Draw";$("#selected").textContent=drawing?"Drawing "+selected:selected+(fakes[selected]?" FAKE":" selected")};
 $("#field").addEventListener("click",e=>{if(!drawing)return;const p=$("#field").createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform($("#field").getScreenCTM().inverse());routes[selected].push({x:Math.max(20,Math.min(400,q.x)),y:Math.max(90,Math.min(680,q.y))});draw()});
 function openName(){ $("#nameEditor").classList.add("open");$("#nameInput").focus();$("#nameInput").select()}
@@ -162,26 +171,45 @@ $("#playName").onclick=openName;$("#editName").onclick=openName;$("#nameDone").o
 $("#nameInput").addEventListener("keydown",e=>{if(e.key==="Enter"){setName(e.currentTarget.value);$("#nameEditor").classList.remove("open")}});
 function routeAt(n,t){const a=[players[n],...routes[n]];if(a.length<2)return players[n];let ls=[],tot=0;for(let i=1;i<a.length;i++){const l=Math.hypot(a[i].x-a[i-1].x,a[i].y-a[i-1].y);ls.push(l);tot+=l}let d=t*tot;for(let i=0;i<ls.length;i++){if(d<=ls[i]){const f=ls[i]?d/ls[i]:0;return{x:a[i].x+(a[i+1].x-a[i].x)*f,y:a[i].y+(a[i+1].y-a[i].y)*f}}d-=ls[i]}return a[a.length-1]}
 $("#playBtn").onclick=()=>{
-  if(raf)cancelAnimationFrame(raf);draw();const gs={};document.querySelectorAll("#players g").forEach(g=>gs[g.dataset.player]=g);const carrier=$("#ballTo").value;let start=null;
-  function tick(ts){if(!start)start=ts;const t=Math.min(1,(ts-start)/3300);ORDER.forEach(n=>{const q=routeAt(n,t),s=players[n];gs[n].setAttribute("transform",`translate(${q.x-s.x} ${q.y-s.y})`)});
-    let bp;if(t<.12){const a=players.C,b=players.QB,f=t/.12;bp={x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f}}else if(carrier==="QB")bp=players.QB;else bp=routeAt(carrier,Math.min(1,(t-.12)/.88));
-    $("#football").setAttribute("transform",`translate(${bp.x-210} ${bp.y-396})`);if(t<1)raf=requestAnimationFrame(tick);else raf=null}
-  raf=requestAnimationFrame(tick)
+  if(raf)cancelAnimationFrame(raf);draw();const gs={};document.querySelectorAll("#players g").forEach(g=>gs[g.dataset.player]=g);
+  const action=$("#actionType").value,target=$("#ballTarget").value,throwStart=.58,throwEnd=.76;let start=null;
+  function tick(ts){
+    if(!start)start=ts;const t=Math.min(1,(ts-start)/4000);
+    const moveT=action==="PASS"?Math.min(1,t/throwStart):t;
+    ORDER.forEach(n=>{const q=routeAt(n,moveT),st=players[n];gs[n].setAttribute("transform",`translate(${q.x-st.x} ${q.y-st.y})`)});
+    let bp;
+    if(t<.12){
+      const a=players.C,b=players.QB,f=t/.12;bp={x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f};
+    }else if(action==="PASS"){
+      const qbEnd=endpoint("QB"),targetEnd=endpoint(target);
+      if(t<throwStart){
+        const qbT=Math.min(1,t/throwStart);bp=routeAt("QB",qbT);
+      }else if(t<throwEnd){
+        const f=(t-throwStart)/(throwEnd-throwStart);bp={x:qbEnd.x+(targetEnd.x-qbEnd.x)*f,y:qbEnd.y+(targetEnd.y-qbEnd.y)*f};
+      }else bp=targetEnd;
+    }else{
+      bp=routeAt(target,Math.min(1,(t-.12)/.88));
+    }
+    $("#football").setAttribute("transform",`translate(${bp.x-210} ${bp.y-396})`);
+    if(t<1)raf=requestAnimationFrame(tick);else raf=null;
+  }
+  raf=requestAnimationFrame(tick);
 };
 $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("#football").setAttribute("transform","translate(0 0)")};
 $("#playsBtn").onclick=()=>$("#playsDialog").showModal();$("#closeDialog").onclick=()=>$("#playsDialog").close();
-function snap(){return{name:$("#playName").textContent,ball:$("#ballTo").value,players:clone(players),routes:clone(routes),fakes:clone(fakes)}}
-function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v}catch{}return defaults()}
+function snap(){return{name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:clone(players),routes:clone(routes),fakes:clone(fakes)}}
+function normalizePlay(p){if(p.action&&p.target)return p;const isPass=(p.name||"").toUpperCase().includes("PASS")||p.ball==="QB";return {...p,action:isPass?"PASS":"HANDOFF",target:isPass?"X":(p.ball||"H")}}
+function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v.map(normalizePlay)}catch{}return defaults()}
 function persist(){localStorage.setItem("fnlRebelsPlays",JSON.stringify(saved))}
 function defaults(){return[
-{name:"REBEL JET",ball:"H",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:166,y:432}],H:[{x:210,y:508},{x:115,y:508},{x:45,y:466}]},fakes:emptyFakes()},
-{name:"REBEL COUNTER",ball:"Y",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:195,y:478},{x:285,y:428},{x:350,y:368}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}},
-{name:"REBEL JET PASS",ball:"QB",players:clone(BASE),routes:{X:[{x:55,y:350},{x:120,y:280}],C:[{x:210,y:292}],Z:[{x:345,y:350},{x:300,y:280}],QB:[],Y:[{x:166,y:432},{x:220,y:380}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}}
+{name:"REBEL JET",action:"HANDOFF",target:"H",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:166,y:432}],H:[{x:210,y:508},{x:115,y:508},{x:45,y:466}]},fakes:emptyFakes()},
+{name:"REBEL COUNTER",action:"HANDOFF",target:"Y",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:195,y:478},{x:285,y:428},{x:350,y:368}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}},
+{name:"REBEL JET PASS",action:"PASS",target:"X",players:clone(BASE),routes:{X:[{x:55,y:350},{x:120,y:280}],C:[{x:210,y:292}],Z:[{x:345,y:350},{x:300,y:280}],QB:[],Y:[{x:166,y:432},{x:220,y:380}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}}
 ]}
-function renderSaved(){const box=$("#savedList");box.innerHTML="";saved.forEach((p,i)=>{const row=document.createElement("div");row.className="saved";const load=document.createElement("button");load.className="pill";load.textContent=p.name;load.onclick=()=>{players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#ballTo").value=p.ball;setName(p.name);$("#playsDialog").close();choose("H")};const del=document.createElement("button");del.className="pill";del.textContent="Delete";del.onclick=()=>{saved.splice(i,1);persist();renderSaved()};row.append(load,del);box.append(row)})}
+function renderSaved(){const box=$("#savedList");box.innerHTML="";saved.forEach((p,i)=>{const row=document.createElement("div");row.className="saved";const load=document.createElement("button");load.className="pill";load.textContent=p.name;load.onclick=()=>{p=normalizePlay(p);players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();choose("H")};const del=document.createElement("button");del.className="pill";del.textContent="Delete";del.onclick=()=>{saved.splice(i,1);persist();renderSaved()};row.append(load,del);box.append(row)})}
 $("#saveBtn").onclick=()=>{const s=snap(),i=saved.findIndex(p=>p.name===s.name);if(i>=0)saved[i]=s;else saved.push(s);persist();renderSaved()};
-$("#newBtn").onclick=()=>{players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#ballTo").value="QB";setName("New REBEL Play");$("#playsDialog").close();choose("H")};
-renderSaved();draw();
+$("#newBtn").onclick=()=>{players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();choose("H")};
+renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";draw();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
 </body>
