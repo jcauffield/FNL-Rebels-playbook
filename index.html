@@ -97,8 +97,8 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
     </svg>
 
     <div class="route-wrap">
-      <button id="routeToggle" class="route-toggle">Routes ▴</button>
-      <div id="routeRail" class="route-rail">
+      <button id="routeToggle" class="route-toggle">Routes ▾</button>
+      <div id="routeRail" class="route-rail hidden">
         <button class="route-pill" data-route="jet">JET</button>
         <button class="route-pill" data-route="fakejet">FAKE JET</button>
         <button class="route-pill" data-route="counter">COUNTER</button>
@@ -156,7 +156,7 @@ function endpoint(n){const a=routes[n];return a&&a.length?a[a.length-1]:players[
 function triangle(cx,cy,angle,size=7){const pts=[[size,0],[-size*.65,size*.65],[-size*.65,-size*.65]].map(([x,y])=>{const c=Math.cos(angle),sn=Math.sin(angle);return `${cx+x*c-y*sn},${cy+x*sn+y*c}`}).join(" ");return E("polygon",{points:pts,fill:"#ff5252"})}
 function drawPass(){const layer=$("#passLayer");layer.innerHTML="";if($("#actionType").value!=="PASS")return;const from=endpoint("QB"),to=endpoint($("#ballTarget").value),dx=to.x-from.x,dy=to.y-from.y,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx),count=Math.max(4,Math.floor(dist/35));for(let i=1;i<=count;i++){const f=i/(count+1);layer.append(triangle(from.x+dx*f,from.y+dy*f,ang,i===count?8:6))}}
 function setName(v){const n=(v||"").trim()||"Untitled REBEL Play";$("#playName").textContent=n;$("#nameInput").value=n}
-function choose(n){selected=n;$("#selected").textContent=n+(fakes[n]?" FAKE":" selected");draw()}
+function choose(n,openMenu=true){selected=n;$("#selected").textContent=n+(fakes[n]?" FAKE":" selected");if(openMenu){$("#routeRail").classList.remove("hidden");$("#routeToggle").textContent="Routes ▴"}draw()}
 function draw(){
   $("#players").innerHTML="";$("#routes").innerHTML="";
   ORDER.forEach(n=>{
@@ -233,7 +233,24 @@ function defaults(){return[
 {name:"REBEL COUNTER",action:"HANDOFF",target:"Y",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:195,y:478},{x:285,y:428},{x:350,y:368}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}},
 {name:"REBEL JET PASS",action:"PASS",target:"X",players:clone(BASE),routes:{X:[{x:55,y:350},{x:120,y:280}],C:[{x:210,y:292}],Z:[{x:345,y:350},{x:300,y:280}],QB:[],Y:[{x:166,y:432},{x:220,y:380}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}}
 ]}
-function renderSaved(){const box=$("#savedList");box.innerHTML="";saved.forEach((p,i)=>{const row=document.createElement("div");row.className="saved";const load=document.createElement("button");load.className="pill";load.textContent=p.name;load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();choose("H")};const del=document.createElement("button");del.className="pill";del.textContent="Delete";del.onclick=async()=>{if(p.id&&sessionUser){const {error}=await cloud.from("plays").delete().eq("id",p.id);if(error){$("#syncStatus").textContent="Delete failed: "+error.message;return}await loadCloudPlays()}else{saved.splice(i,1);persist();renderSaved()}};row.append(load,del);box.append(row)})}
+function renderSaved(){
+  const box=$("#savedList");box.innerHTML="";
+  saved.forEach((p,i)=>{
+    const row=document.createElement("div");row.className="saved";
+    const load=document.createElement("button");load.className="pill";load.textContent=p.name;
+    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+    const del=document.createElement("button");del.className="pill";del.textContent="Delete";
+    del.onclick=async()=>{
+      if(p.id&&sessionUser){
+        $("#syncStatus").textContent="Deleting…";
+        const {error}=await cloud.from("plays").delete().eq("name",p.name);
+        if(error){$("#syncStatus").textContent="Delete failed: "+error.message;return}
+        await loadCloudPlays();
+      }else{saved=saved.filter(x=>x.name!==p.name);persist();renderSaved()}
+    };
+    row.append(load,del);box.append(row)
+  })
+}
 async function saveCurrentPlay(){
   const p=snap(),i=saved.findIndex(x=>(p.id&&x.id===p.id)||(!p.id&&x.name===p.name));
   if(i>=0)saved[i]=p;else saved.push(p);
@@ -246,10 +263,11 @@ async function saveCurrentPlay(){
     if(currentCloudId){
       result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select().single();
     }else{
-      const existing=await cloud.from("plays").select("id").eq("name",p.name).limit(1);
+      const existing=await cloud.from("plays").select("id,updated_at").eq("name",p.name).order("updated_at",{ascending:false});
       if(existing.data&&existing.data.length){
         currentCloudId=existing.data[0].id;
         result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select().single();
+        if(existing.data.length>1)await cloud.from("plays").delete().in("id",existing.data.slice(1).map(x=>x.id));
       }else{
         result=await cloud.from("plays").insert(payload).select().single();
       }
@@ -269,28 +287,45 @@ async function saveCurrentPlay(){
 }
 $("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
-$("#newBtn").onclick=()=>{currentCloudId=null;players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();choose("H")};
+$("#newBtn").onclick=()=>{currentCloudId=null;players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
 async function loadCloudPlays(showStatus=true){
   if(!sessionUser)return;
   if(showStatus)$("#syncStatus").textContent="Syncing shared playbook…";
   const {data,error}=await cloud.from("plays").select("*").order("updated_at",{ascending:false});
   if(error){$("#syncStatus").textContent="Sync failed. Showing saved phone copy.";return}
-  saved=(data||[]).map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at}));
-  persist();renderSaved();
-  $("#syncStatus").textContent="Shared playbook synced.";
-}
-async function migrateLocalPlays(){
-  if(!sessionUser)return;
-  const locals=loadSaved().filter(p=>!p.id);
-  for(const p0 of locals){
-    const p=normalizePlay(p0);
-    const {data:match}=await cloud.from("plays").select("id").eq("name",p.name).limit(1);
-    if(!match||!match.length){
-      await cloud.from("plays").insert({name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes});
-    }
+  const rows=data||[],seen=new Map(),duplicateIds=[];
+  for(const r of rows){
+    const key=(r.name||"").trim().toLowerCase();
+    if(!seen.has(key))seen.set(key,r); else duplicateIds.push(r.id);
   }
+  saved=[...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at}));
+  persist();renderSaved();
+  if(duplicateIds.length){
+    const {error:dedupeError}=await cloud.from("plays").delete().in("id",duplicateIds);
+    if(dedupeError){$("#syncStatus").textContent="Synced. Duplicate cleanup failed.";return}
+  }
+  $("#syncStatus").textContent=duplicateIds.length?("Synced and removed "+duplicateIds.length+" duplicate"+(duplicateIds.length===1?"":"s")+"." ):"Shared playbook synced.";
 }
+let migrationRunning=false;
+async function migrateLocalPlays(){
+  if(!sessionUser||migrationRunning||localStorage.getItem("fnlRebelsCloudMigratedV1")==="yes")return;
+  migrationRunning=true;
+  try{
+    const locals=loadSaved().filter(p=>!p.id);
+    const unique=[...new Map(locals.map(p=>[(p.name||"").trim().toLowerCase(),normalizePlay(p)])).values()];
+    for(const p of unique){
+      const {data:match,error}=await cloud.from("plays").select("id").eq("name",p.name).limit(1);
+      if(error)continue;
+      if(!match||!match.length)await cloud.from("plays").insert({name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes});
+    }
+    localStorage.setItem("fnlRebelsCloudMigratedV1","yes");
+  }finally{migrationRunning=false}
+}
+let authRefreshRunning=false;
 async function refreshAuthUI(){
+  if(authRefreshRunning)return;
+  authRefreshRunning=true;
+  try{
   const {data:{session}}=await cloud.auth.getSession();
   sessionUser=session?.user||null;
   $("#authSignedOut").hidden=!!sessionUser;
@@ -304,6 +339,7 @@ async function refreshAuthUI(){
   }else{
     if(cloudSyncTimer){clearInterval(cloudSyncTimer);cloudSyncTimer=null}
   }
+  }finally{authRefreshRunning=false}
 }
 $("#magicLinkBtn").onclick=async()=>{
   const email=$("#coachEmail").value.trim();
@@ -317,7 +353,7 @@ $("#signOutBtn").onclick=async()=>{await cloud.auth.signOut();sessionUser=null;c
 $("#refreshCloudBtn").onclick=()=>loadCloudPlays();
 cloud.auth.onAuthStateChange(()=>setTimeout(refreshAuthUI,0));
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&sessionUser)loadCloudPlays(false)});
-renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";draw();refreshAuthUI();
+renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";draw();refreshAuthUI();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
 </body>
