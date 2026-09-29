@@ -44,6 +44,8 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wide{width:100%}
 .list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .saved{display:flex;gap:8px}.saved button:first-child{flex:1;text-align:left}
+.pill.busy{opacity:.7;pointer-events:none}
+.pill.success{outline:2px solid rgba(255,255,255,.75)}
 .name-editor{position:absolute;left:50%;top:68px;transform:translateX(-50%);z-index:30;width:min(82%,340px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;display:none}
 .name-editor.open{display:block}.name-editor .row{display:flex;gap:8px}.name-editor input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);padding:10px}
 .small{font-size:12px;color:var(--muted);margin-bottom:6px}
@@ -256,49 +258,75 @@ function renderSaved(){
     load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
     const del=document.createElement("button");del.className="pill";del.textContent="Delete";
     del.onclick=async()=>{
-      if(p.id&&sessionUser){
-        $("#syncStatus").textContent="Deleting…";
-        const {error}=await cloud.from("plays").delete().eq("name",p.name);
-        if(error){$("#syncStatus").textContent="Delete failed: "+error.message;return}
-        await loadCloudPlays();
-      }else{saved=saved.filter(x=>x.name!==p.name);persist();renderSaved()}
+      if(del.classList.contains("busy"))return;
+      const oldText=del.textContent;del.textContent="Deleting…";del.classList.add("busy");
+      const previous=[...saved];
+      saved=saved.filter(x=>x.id!==p.id && x.name!==p.name);persist();renderSaved();
+      try{
+        if(p.id&&sessionUser){
+          const {error}=await cloud.from("plays").delete().eq("id",p.id);
+          if(error)throw error;
+          $("#syncStatus").textContent="Play deleted.";
+          await loadCloudPlays(false);
+        }else{
+          $("#authMessage").textContent="Play deleted from this phone.";
+        }
+      }catch(err){
+        saved=previous;persist();renderSaved();
+        const msg=err?.message||String(err);
+        if(sessionUser)$("#syncStatus").textContent="Delete failed: "+msg; else $("#authMessage").textContent="Delete failed: "+msg;
+      }
     };
     row.append(load,del);box.append(row)
   })
 }
 async function saveCurrentPlay(){
-  const p=snap(),i=saved.findIndex(x=>(p.id&&x.id===p.id)||(!p.id&&x.name===p.name));
-  if(i>=0)saved[i]=p;else saved.push(p);
-  persist();renderSaved();
-  const b=$("#diagramSaveBtn"),old=b?b.innerHTML:"";
-  if(b)b.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.2 16.6-4.4-4.4 1.4-1.4 3 3 8.6-8.6 1.4 1.4-10 10Z"/></svg>';
-  if(sessionUser){
+  const buttons=[$("#saveBtn"),$("#diagramSaveBtn")].filter(Boolean);
+  if(buttons.some(b=>b.classList.contains("busy")))return;
+  buttons.forEach(b=>b.classList.add("busy"));
+  const diagram=$("#diagramSaveBtn"),oldIcon=diagram?diagram.innerHTML:"";
+  if(diagram)diagram.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L13 11h7V4l-2.34 2.34A7.96 7.96 0 0 0 12 4Z"/></svg>';
+  if($("#saveBtn"))$("#saveBtn").textContent="Saving…";
+  try{
+    const p=snap();
     const payload={name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes};
-    let result;
-    if(currentCloudId){
-      result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select().single();
-    }else{
-      const existing=await cloud.from("plays").select("id,updated_at").eq("name",p.name).order("updated_at",{ascending:false});
-      if(existing.data&&existing.data.length){
-        currentCloudId=existing.data[0].id;
-        result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select().single();
-        if(existing.data.length>1)await cloud.from("plays").delete().in("id",existing.data.slice(1).map(x=>x.id));
-      }else{
-        result=await cloud.from("plays").insert(payload).select().single();
+    if(sessionUser){
+      let result;
+      if(currentCloudId){
+        result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select("*").maybeSingle();
+        if(result.error)throw result.error;
+        if(!result.data){currentCloudId=null}
       }
-    }
-    if(result.error){
-      $("#syncStatus").textContent="Cloud save failed. Saved on this phone.";
-      console.error(result.error);
-    }else{
-      currentCloudId=result.data.id;
-      $("#syncStatus").textContent="Saved to shared playbook.";
+      if(!currentCloudId){
+        const existing=await cloud.from("plays").select("id").eq("name",p.name).order("updated_at",{ascending:false}).limit(1);
+        if(existing.error)throw existing.error;
+        if(existing.data&&existing.data.length){
+          currentCloudId=existing.data[0].id;
+          result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select("*").single();
+        }else{
+          result=await cloud.from("plays").insert(payload).select("*").single();
+        }
+        if(result.error)throw result.error;
+      }
+      if(result&&result.data&&result.data.id)currentCloudId=result.data.id;
       await loadCloudPlays(false);
+      $("#syncStatus").textContent="Saved to shared playbook."; 
+    }else{
+      p.id=undefined;
+      const i=saved.findIndex(x=>x.name===p.name);if(i>=0)saved[i]=p;else saved.push(p);persist();renderSaved();
+      $("#authMessage").textContent="Saved on this phone. Sign in to share it.";
     }
-  }else{
-    $("#authMessage").textContent="Saved on this phone. Sign in to share it.";
+    if(diagram)diagram.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="m9.2 16.6-4.4-4.4 1.4-1.4 3 3 8.6-8.6 1.4 1.4-10 10Z"/></svg>';
+    buttons.forEach(b=>b.classList.add("success"));
+    setTimeout(()=>buttons.forEach(b=>b.classList.remove("success")),700);
+  }catch(err){
+    const msg=err?.message||String(err);
+    if(sessionUser)$("#syncStatus").textContent="Save failed: "+msg; else $("#authMessage").textContent="Save failed: "+msg;
+  }finally{
+    if($("#saveBtn"))$("#saveBtn").textContent="Save Play";
+    if(diagram)setTimeout(()=>diagram.innerHTML=oldIcon,700);
+    buttons.forEach(b=>b.classList.remove("busy"));
   }
-  if(b)setTimeout(()=>b.innerHTML=old,700);
 }
 $("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
