@@ -31,7 +31,7 @@ svg{width:100%;height:100%;display:block;background:linear-gradient(#102b49,#0d2
 .route-toggle{height:34px;padding:0 11px;font-size:10px}
 .route-rail{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .route-rail.hidden{display:none}
-.route-pill{height:34px;min-width:72px;padding:0 10px;font-size:9px;white-space:nowrap}
+.route-pill{height:34px;min-width:72px;padding:0 10px;font-size:9px;white-space:nowrap;touch-action:manipulation}
 .bottom-center{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(8px + env(safe-area-inset-bottom));z-index:18}
 .selected{min-height:42px;border-radius:999px;border:1px solid var(--line);background:rgba(18,35,63,.96);padding:0 14px;font-weight:900;font-size:11px;color:var(--text)}
 .bottom-controls{position:absolute;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:18;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
@@ -173,22 +173,37 @@ function draw(){
   });
   drawPass();
 }
-function preset(k){
-  const s=players[selected],side=s.x<210?-1:1;let r=[];
-  if(k==="jet")r=[{x:210,y:s.y},{x:120,y:s.y},{x:45,y:s.y-42}];
-  if(k==="fakejet"){r=[{x:210,y:s.y},{x:110,y:s.y},{x:42,y:s.y-32}];fakes[selected]=true}
-  if(k==="counter")r=[{x:s.x-side*25,y:s.y-20},{x:s.x-side*90,y:s.y-75},{x:s.x-side*145,y:s.y-130}];
+function preset(k,reverse=false){
+  const s=players[selected],side=s.x<210?-1:1,dir=reverse?-side:side;let r=[];
+  if(k==="jet")r=reverse?[{x:210,y:s.y},{x:300,y:s.y},{x:375,y:s.y-42}]:[{x:210,y:s.y},{x:120,y:s.y},{x:45,y:s.y-42}];
+  if(k==="fakejet"){r=reverse?[{x:210,y:s.y},{x:310,y:s.y},{x:378,y:s.y-32}]:[{x:210,y:s.y},{x:110,y:s.y},{x:42,y:s.y-32}];fakes[selected]=true}
+  if(k==="counter")r=[{x:s.x-dir*25,y:s.y-20},{x:s.x-dir*90,y:s.y-75},{x:s.x-dir*145,y:s.y-130}];
   if(k==="go")r=[{x:s.x,y:s.y-145},{x:s.x,y:140}];
-  if(k==="slant")r=[{x:s.x-side*65,y:s.y-105},{x:210,y:210}];
-  if(k==="out")r=[{x:s.x,y:s.y-90},{x:s.x+side*85,y:s.y-90}];
-  if(k==="drag")r=[{x:s.x,y:s.y-50},{x:s.x-side*155,y:s.y-50}];
-  if(k==="flat")r=[{x:s.x+side*65,y:s.y-15},{x:s.x+side*110,y:s.y-35}];
+  if(k==="slant")r=[{x:s.x-dir*65,y:s.y-105},{x:reverse?(s.x-dir*130):210,y:210}];
+  if(k==="out")r=[{x:s.x,y:s.y-90},{x:s.x+dir*85,y:s.y-90}];
+  if(k==="drag")r=[{x:s.x,y:s.y-50},{x:s.x-dir*155,y:s.y-50}];
+  if(k==="flat")r=[{x:s.x+dir*65,y:s.y-15},{x:s.x+dir*110,y:s.y-35}];
   if(k==="fake"){fakes[selected]=!fakes[selected];choose(selected);return}
   if(k==="clear"){r=[];fakes[selected]=false}
   if(!["fakejet","fake","clear"].includes(k))fakes[selected]=false;
-  routes[selected]=r;choose(selected)
+  routes[selected]=r.map(p=>({x:Math.max(20,Math.min(400,p.x)),y:p.y}));
+  choose(selected)
 }
-document.querySelectorAll("[data-route]").forEach(b=>b.addEventListener("click",()=>preset(b.dataset.route)));
+document.querySelectorAll("[data-route]").forEach(b=>{
+  let tapTimer=null;
+  b.addEventListener("click",e=>{
+    e.preventDefault();
+    const k=b.dataset.route;
+    if(["fake","clear"].includes(k)){preset(k);return}
+    if(tapTimer){
+      clearTimeout(tapTimer);tapTimer=null;
+      preset(k,true);
+      const old=b.textContent;b.textContent=old+" ↔";setTimeout(()=>b.textContent=old,450);
+    }else{
+      tapTimer=setTimeout(()=>{preset(k,false);tapTimer=null},230);
+    }
+  });
+});
 $("#routeToggle").onclick=()=>{const r=$("#routeRail"),hide=!r.classList.contains("hidden");r.classList.toggle("hidden",hide);$("#routeToggle").textContent=hide?"Routes ▾":"Routes ▴"};
 $("#actionType").onchange=draw;$("#ballTarget").onchange=draw;
 $("#drawBtn").onclick=()=>{drawing=!drawing;$("#drawBtn").textContent=drawing?"✓ Finish":"✏ Draw";$("#selected").textContent=drawing?"Drawing "+selected:selected+(fakes[selected]?" FAKE":" selected")};
