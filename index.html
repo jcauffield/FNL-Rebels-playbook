@@ -259,10 +259,12 @@ function renderSaved(){
     const del=document.createElement("button");del.className="pill";del.textContent="Delete";
     del.onclick=async()=>{
       if(del.classList.contains("busy"))return;
-      const oldText=del.textContent;del.textContent="Deleting…";del.classList.add("busy");
+      del.textContent="Deleting…";del.classList.add("busy");
       const previous=[...saved];
       saved=saved.filter(x=>x.id!==p.id && x.name!==p.name);persist();renderSaved();
       try{
+        const {data:{session}}=await cloud.auth.getSession();
+        sessionUser=session?.user||null;
         if(p.id&&sessionUser){
           const {error}=await cloud.from("plays").delete().eq("id",p.id);
           if(error)throw error;
@@ -275,6 +277,7 @@ function renderSaved(){
         saved=previous;persist();renderSaved();
         const msg=err?.message||String(err);
         if(sessionUser)$("#syncStatus").textContent="Delete failed: "+msg; else $("#authMessage").textContent="Delete failed: "+msg;
+        console.error("deletePlay",err);
       }
     };
     row.append(load,del);box.append(row)
@@ -287,41 +290,50 @@ async function saveCurrentPlay(){
   const diagram=$("#diagramSaveBtn"),oldIcon=diagram?diagram.innerHTML:"";
   if(diagram)diagram.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L13 11h7V4l-2.34 2.34A7.96 7.96 0 0 0 12 4Z"/></svg>';
   if($("#saveBtn"))$("#saveBtn").textContent="Saving…";
+  const p=snap();
+  const localCopy={...p,id:currentCloudId||p.id};
+  const localIndex=saved.findIndex(x=>(localCopy.id&&x.id===localCopy.id)||x.name===localCopy.name);
+  if(localIndex>=0)saved[localIndex]=localCopy;else saved.push(localCopy);
+  persist();renderSaved();
   try{
-    const p=snap();
-    const payload={name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes};
-    if(sessionUser){
-      let result;
-      if(currentCloudId){
-        result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select("*").maybeSingle();
-        if(result.error)throw result.error;
-        if(!result.data){currentCloudId=null}
-      }
-      if(!currentCloudId){
-        const existing=await cloud.from("plays").select("id").eq("name",p.name).order("updated_at",{ascending:false}).limit(1);
-        if(existing.error)throw existing.error;
-        if(existing.data&&existing.data.length){
-          currentCloudId=existing.data[0].id;
-          result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select("*").single();
-        }else{
-          result=await cloud.from("plays").insert(payload).select("*").single();
-        }
-        if(result.error)throw result.error;
-      }
-      if(result&&result.data&&result.data.id)currentCloudId=result.data.id;
-      await loadCloudPlays(false);
-      $("#syncStatus").textContent="Saved to shared playbook."; 
-    }else{
-      p.id=undefined;
-      const i=saved.findIndex(x=>x.name===p.name);if(i>=0)saved[i]=p;else saved.push(p);persist();renderSaved();
-      $("#authMessage").textContent="Saved on this phone. Sign in to share it.";
+    const {data:{session}}=await cloud.auth.getSession();
+    sessionUser=session?.user||null;
+    if(!sessionUser){
+      $("#authMessage").textContent="Saved on this phone. Sign in to sync with your assistant coach.";
+      return;
     }
+    const payload={name:p.name,action:p.action,target:p.target,players:p.players,routes:p.routes,fakes:p.fakes};
+    let result=null;
+    if(currentCloudId){
+      result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select("*").maybeSingle();
+      if(result.error)throw result.error;
+      if(!result.data)currentCloudId=null;
+    }
+    if(!currentCloudId){
+      const existing=await cloud.from("plays").select("id").eq("name",p.name).order("updated_at",{ascending:false}).limit(1);
+      if(existing.error)throw existing.error;
+      if(existing.data&&existing.data.length){
+        currentCloudId=existing.data[0].id;
+        result=await cloud.from("plays").update(payload).eq("id",currentCloudId).select("*").single();
+      }else{
+        result=await cloud.from("plays").insert(payload).select("*").single();
+      }
+      if(result.error)throw result.error;
+    }
+    if(result&&result.data&&result.data.id)currentCloudId=result.data.id;
+    const idx=saved.findIndex(x=>x.name===p.name);
+    if(idx>=0)saved[idx]={...saved[idx],id:currentCloudId};
+    persist();
+    $("#syncStatus").textContent="Saved to shared playbook."; 
+    await loadCloudPlays(false);
     if(diagram)diagram.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="m9.2 16.6-4.4-4.4 1.4-1.4 3 3 8.6-8.6 1.4 1.4-10 10Z"/></svg>';
     buttons.forEach(b=>b.classList.add("success"));
     setTimeout(()=>buttons.forEach(b=>b.classList.remove("success")),700);
   }catch(err){
     const msg=err?.message||String(err);
-    if(sessionUser)$("#syncStatus").textContent="Save failed: "+msg; else $("#authMessage").textContent="Save failed: "+msg;
+    if(sessionUser)$("#syncStatus").textContent="Saved on this phone, but cloud sync failed: "+msg;
+    else $("#authMessage").textContent="Saved on this phone. Cloud sync failed: "+msg;
+    console.error("saveCurrentPlay",err);
   }finally{
     if($("#saveBtn"))$("#saveBtn").textContent="Save Play";
     if(diagram)setTimeout(()=>diagram.innerHTML=oldIcon,700);
