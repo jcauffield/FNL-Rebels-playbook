@@ -13,7 +13,8 @@ body{min-height:100dvh;overflow:hidden}
 button,select,input{font:inherit}
 .app{height:100dvh;width:100vw;display:flex;align-items:stretch;justify-content:center;background:var(--bg)}
 .field-wrap{position:relative;width:min(100vw,520px);height:100dvh;overflow:hidden;background:var(--panel)}
-.top-left{position:absolute;left:10px;top:max(10px,env(safe-area-inset-top));z-index:20}
+.top-left-stack{position:absolute;left:10px;top:max(10px,env(safe-area-inset-top));z-index:20;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.top-left{position:static}
 .top-right-stack{position:absolute;right:10px;top:max(10px,env(safe-area-inset-top));z-index:20;display:flex;flex-direction:column;gap:6px;align-items:flex-end;background:transparent}
 .save-icon{width:48px;height:48px;min-width:48px;min-height:48px;padding:0;color:#fff;display:flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden}
 .save-icon svg{display:block;width:30px;height:30px;transform:none;flex:0 0 auto}
@@ -54,13 +55,29 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .auth-row input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);padding:10px}
 .auth-status{font-size:12px;color:var(--muted);margin-bottom:8px}
 .sync-note{font-size:11px;color:var(--muted);margin-top:8px}
+.personnel-drawer{position:absolute;left:8px;right:8px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:40;background:rgba(7,17,31,.98);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:none}
+.personnel-drawer.open{display:block}
+.personnel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.personnel-head strong{font-size:13px}
+.personnel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.pos-slot{min-height:58px;border:1px dashed var(--line);border-radius:12px;padding:6px;text-align:center;background:rgba(18,35,63,.7)}
+.pos-slot .pos{font-size:10px;color:var(--muted);font-weight:900}
+.pos-slot .kid{font-size:12px;font-weight:900;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.roster-tray{display:flex;flex-wrap:wrap;gap:6px}
+.kid-chip{border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--text);padding:7px 10px;font-size:11px;font-weight:800;touch-action:none}
+.kid-chip.selected-kid{outline:2px solid var(--accent)}
+.personnel-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
+.player-name-svg{fill:#f6f8fb;font-size:9px;font-weight:800;paint-order:stroke;stroke:#0b1b33;stroke-width:2px;stroke-linejoin:round}
 @media (min-width:700px){.field-wrap{border-left:1px solid var(--line);border-right:1px solid var(--line)}}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="field-wrap">
-    <button id="playsBtn" class="pill top-left">☰ Plays</button>
+    <div class="top-left-stack">
+      <button id="playsBtn" class="pill top-left">☰ Plays</button>
+      <button id="personnelBtn" class="pill">👥 Personnel</button>
+    </div>
     <div class="top-right-stack">
       <button id="diagramSaveBtn" class="pill save-icon" aria-label="Save play" title="Save play"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" focusable="false"><path fill="currentColor" d="M5 3h12.6L21 6.4V21H3V3h2Zm1 2v5h10V5H6Zm-1 8v6h14V8.1L16.9 5H18v8H5Zm3 2h8v4H8v-4Z"/></svg></button>
       <button id="playBtn" class="pill">▶ Play</button>
@@ -114,6 +131,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
       </div>
     </div>
 
+    <div id="personnelDrawer" class="personnel-drawer">
+      <div class="personnel-head"><strong>Personnel</strong><button id="personnelDone" class="pill">Done</button></div>
+      <div id="personnelGrid" class="personnel-grid"></div>
+      <div class="small">Sideline / roster — drag or tap a player, then tap a position.</div>
+      <div id="rosterTray" class="roster-tray"></div>
+      <div class="personnel-actions"><button id="clearPersonnel" class="pill">Clear</button><button id="resetPersonnel" class="pill">Reset Lineup</button></div>
+    </div>
     <div class="bottom-keys"><div class="key pass">▲ ▲ ▲ = pass</div><div class="key">Solid = route • Dashed = fake</div></div>
     <div class="bottom-center"><button id="selected" class="selected">H selected</button></div>
     <div class="bottom-controls"><button id="drawBtn" class="pill">✏ Draw</button><button id="resetBtn" class="pill">↺ Reset</button></div>
@@ -148,11 +172,17 @@ const cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 let sessionUser=null,currentCloudId=null,cloudSyncTimer=null;
 const BASE={X:{x:55,y:432},C:{x:210,y:380},Z:{x:345,y:432},QB:{x:210,y:428},Y:{x:166,y:508},H:{x:254,y:508}};
 const ORDER=["X","C","Z","QB","Y","H"];
+const ROSTER=["Landon","Jack S","Jack D","Hudson","Grayson","Ethan","Trent","Renee"];
+const DEFAULT_PERSONNEL={QB:"Renee",C:"Trent",H:"Ethan",Y:"Landon",X:"Jack S",Z:"Hudson"};
+let personnel=clone(DEFAULT_PERSONNEL),selectedKid=null;
 let players=clone(BASE),routes=emptyRoutes(),fakes=emptyFakes(),selected="H",drawing=false,raf=null;
 let saved=loadSaved();
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function emptyRoutes(){return {X:[],C:[],Z:[],QB:[],Y:[],H:[]}}
 function emptyFakes(){return {X:false,C:false,Z:false,QB:false,Y:false,H:false}}
+function cleanPlayers(p){const q=clone(p||BASE);delete q.__personnel;return q}
+function extractPersonnel(p){return clone((p&&p.__personnel)||{})}
+function playersForSave(){const q=clone(players);q.__personnel=clone(personnel);return q}
 function E(t,a={}){const e=document.createElementNS(ns,t);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,v));return e}
 function endpoint(n){const a=routes[n];return a&&a.length?a[a.length-1]:players[n]}
 function triangle(cx,cy,angle,size=7){const pts=[[size,0],[-size*.65,size*.65],[-size*.65,-size*.65]].map(([x,y])=>{const c=Math.cos(angle),sn=Math.sin(angle);return `${cx+x*c-y*sn},${cy+x*sn+y*c}`}).join(" ");return E("polygon",{points:pts,fill:"#ff5252"})}
@@ -171,7 +201,9 @@ function draw(){
       if(fakes[n]){const lab=E("text",{x:b.x,y:b.y-10,"text-anchor":"middle",fill:"#9fb1c7","font-size":10,"font-weight":900});lab.textContent="FAKE";$("#routes").append(lab)}
     }
     const g=E("g",{"data-player":n,role:"button"}),c=E("circle",{cx:players[n].x,cy:players[n].y,r:n===selected?25:22,fill:n===selected?"#52252d":"#12233f",stroke:n===selected?"#ef5350":"#f6f8fb","stroke-width":n===selected?4:2.5});
-    const t=E("text",{x:players[n].x,y:players[n].y+5,"text-anchor":"middle",fill:"#f6f8fb","font-size":15,"font-weight":900});t.textContent=n;g.append(c,t);g.addEventListener("click",e=>{e.stopPropagation();choose(n)});$("#players").append(g)
+    const t=E("text",{x:players[n].x,y:players[n].y+5,"text-anchor":"middle",fill:"#f6f8fb","font-size":15,"font-weight":900});t.textContent=n;g.append(c,t);
+    if(personnel[n]){const name=E("text",{x:players[n].x,y:players[n].y+37,"text-anchor":"middle",class:"player-name-svg"});name.textContent=personnel[n];g.append(name)}
+    g.addEventListener("click",e=>{e.stopPropagation();choose(n)});$("#players").append(g)
   });
   drawPass();
 }
@@ -213,6 +245,35 @@ $("#field").addEventListener("click",e=>{if(!drawing)return;const p=$("#field").
 function openName(){ $("#nameEditor").classList.add("open");$("#nameInput").focus();$("#nameInput").select()}
 $("#playName").onclick=openName;$("#editName").onclick=openName;$("#nameDone").onclick=()=>{setName($("#nameInput").value);$("#nameEditor").classList.remove("open")};
 $("#nameInput").addEventListener("keydown",e=>{if(e.key==="Enter"){setName(e.currentTarget.value);$("#nameEditor").classList.remove("open")}});
+function renderPersonnel(){
+  const grid=$("#personnelGrid"),tray=$("#rosterTray");grid.innerHTML="";tray.innerHTML="";
+  ORDER.forEach(pos=>{
+    const slot=document.createElement("button");slot.className="pos-slot";slot.dataset.pos=pos;
+    slot.innerHTML='<div class="pos">'+pos+'</div><div class="kid">'+(personnel[pos]||"—")+'</div>';
+    slot.onclick=()=>{if(selectedKid){assignKid(selectedKid,pos);selectedKid=null;renderPersonnel()}};
+    slot.ondragover=e=>e.preventDefault();
+    slot.ondrop=e=>{e.preventDefault();const kid=e.dataTransfer.getData("text/plain");if(kid)assignKid(kid,pos)};
+    grid.append(slot);
+  });
+  ROSTER.forEach(kid=>{
+    const chip=document.createElement("button");chip.className="kid-chip"+(selectedKid===kid?" selected-kid":"");chip.textContent=kid;chip.draggable=true;
+    chip.onclick=()=>{selectedKid=selectedKid===kid?null:kid;renderPersonnel()};
+    chip.ondragstart=e=>e.dataTransfer.setData("text/plain",kid);
+    tray.append(chip);
+  });
+}
+function assignKid(kid,pos){
+  Object.keys(personnel).forEach(p=>{if(personnel[p]===kid)delete personnel[p]});
+  if(personnel[pos]){
+    const displaced=personnel[pos];
+    Object.keys(personnel).forEach(p=>{if(personnel[p]===displaced)delete personnel[p]});
+  }
+  personnel[pos]=kid;draw();renderPersonnel();
+}
+$("#personnelBtn").onclick=()=>{$("#personnelDrawer").classList.toggle("open");renderPersonnel()};
+$("#personnelDone").onclick=()=>$("#personnelDrawer").classList.remove("open");
+$("#clearPersonnel").onclick=()=>{personnel={};selectedKid=null;draw();renderPersonnel()};
+$("#resetPersonnel").onclick=()=>{personnel=clone(DEFAULT_PERSONNEL);selectedKid=null;draw();renderPersonnel()};
 function routeAt(n,t){const a=[players[n],...routes[n]];if(a.length<2)return players[n];let ls=[],tot=0;for(let i=1;i<a.length;i++){const l=Math.hypot(a[i].x-a[i-1].x,a[i].y-a[i-1].y);ls.push(l);tot+=l}let d=t*tot;for(let i=0;i<ls.length;i++){if(d<=ls[i]){const f=ls[i]?d/ls[i]:0;return{x:a[i].x+(a[i+1].x-a[i].x)*f,y:a[i].y+(a[i+1].y-a[i].y)*f}}d-=ls[i]}return a[a.length-1]}
 $("#playBtn").onclick=()=>{
   if(raf)cancelAnimationFrame(raf);draw();const gs={};document.querySelectorAll("#players g").forEach(g=>gs[g.dataset.player]=g);
@@ -241,7 +302,7 @@ $("#playBtn").onclick=()=>{
 };
 $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("#football").setAttribute("transform","translate(0 0)")};
 $("#playsBtn").onclick=async()=>{$("#playsDialog").showModal();if(sessionUser)await loadCloudPlays()};$("#closeDialog").onclick=()=>$("#playsDialog").close();
-function snap(){return{id:currentCloudId||undefined,name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:clone(players),routes:clone(routes),fakes:clone(fakes)}}
+function snap(){return{id:currentCloudId||undefined,name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:playersForSave(),routes:clone(routes),fakes:clone(fakes)}}
 function normalizePlay(p){if(p.action&&p.target)return p;const isPass=(p.name||"").toUpperCase().includes("PASS")||p.ball==="QB";return {...p,action:isPass?"PASS":"HANDOFF",target:isPass?"X":(p.ball||"H")}}
 function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v.map(normalizePlay)}catch{}return defaults()}
 function persist(){localStorage.setItem("fnlRebelsPlays",JSON.stringify(saved))}
@@ -255,7 +316,7 @@ function renderSaved(){
   saved.forEach((p,i)=>{
     const row=document.createElement("div");row.className="saved";
     const load=document.createElement("button");load.className="pill";load.textContent=p.name;
-    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;players=clone(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=extractPersonnel(p.players);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
     const del=document.createElement("button");del.className="pill";del.textContent="Delete";
     del.onclick=async()=>{
       if(del.classList.contains("busy"))return;
@@ -342,7 +403,7 @@ async function saveCurrentPlay(){
 }
 $("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
-$("#newBtn").onclick=()=>{currentCloudId=null;players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+$("#newBtn").onclick=()=>{currentCloudId=null;personnel=clone(DEFAULT_PERSONNEL);players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
 async function loadCloudPlays(showStatus=true){
   if(!sessionUser)return;
   if(showStatus)$("#syncStatus").textContent="Syncing shared playbook…";
@@ -408,7 +469,7 @@ $("#signOutBtn").onclick=async()=>{await cloud.auth.signOut();sessionUser=null;c
 $("#refreshCloudBtn").onclick=()=>loadCloudPlays();
 cloud.auth.onAuthStateChange(()=>setTimeout(refreshAuthUI,0));
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&sessionUser)loadCloudPlays(false)});
-renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";draw();refreshAuthUI();
+renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";renderPersonnel();draw();refreshAuthUI();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
 </body>
