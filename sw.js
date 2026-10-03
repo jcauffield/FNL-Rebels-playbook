@@ -1,4 +1,4 @@
-const CACHE="fnl-rebels-v7";
+const CACHE="fnl-rebels-v8";
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(["./","./index.html","./manifest.json"])))});
 self.addEventListener("activate",e=>{e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})())});
 self.addEventListener("fetch",e=>{
