@@ -20,7 +20,7 @@ button,select,input{font:inherit}
 .save-icon{width:48px;height:48px;min-width:48px;min-height:48px;padding:0;color:#fff;display:flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden}
 .save-icon svg{display:block;width:30px;height:30px;transform:none;flex:0 0 auto}
 .pill{min-height:42px;border-radius:999px;border:1px solid var(--line);background:rgba(18,35,63,.96);color:var(--text);padding:0 14px;font-weight:800;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-.heading{position:absolute;top:max(8px,env(safe-area-inset-top));left:158px;right:84px;z-index:19;text-align:center;pointer-events:none}
+.heading{position:absolute;top:max(8px,env(safe-area-inset-top));left:84px;right:84px;z-index:19;text-align:center;pointer-events:none}
 .name-row{display:flex;justify-content:center;align-items:center;gap:4px;pointer-events:auto}
 .play-name{border:0;background:transparent;color:var(--text);font-weight:900;font-size:16px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .edit{border:0;background:transparent;color:var(--muted);font-size:16px;padding:4px}
@@ -45,7 +45,19 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .sheet{padding:16px}.sheet h3{margin:0 0 4px}.sheet p{margin:0 0 16px;color:var(--muted);font-size:13px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wide{width:100%}
 .list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-.saved{display:flex;gap:8px}.saved button:first-child{flex:1;text-align:left}
+.saved{display:flex;gap:6px;align-items:center}.saved button:first-child{flex:1;text-align:left;min-width:0}.saved .share-btn,.saved .delete-btn{padding:0 10px;min-width:70px}
+body.shared-view .top-left-stack,
+body.shared-view #diagramSaveBtn,
+body.shared-view .route-wrap,
+body.shared-view .bottom-controls,
+body.shared-view .bottom-center,
+body.shared-view .bottom-keys,
+body.shared-view #personnelDrawer,
+body.shared-view .edit,
+body.shared-view .ball-row{display:none!important}
+body.shared-view .heading{left:90px;right:90px}
+body.shared-view .top-right-stack{top:max(10px,env(safe-area-inset-top))}
+body.shared-view #playBtn{display:block}
 .pill.busy{opacity:.7;pointer-events:none}
 .pill.success{outline:2px solid rgba(255,255,255,.75)}
 .name-editor{position:absolute;left:50%;top:68px;transform:translateX(-50%);z-index:30;width:min(82%,340px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;display:none}
@@ -159,7 +171,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
       <div id="syncStatus" class="sync-note">Shared cloud playbook connected.</div>
     </div>
   </div>
-  <div class="grid"><button id="newBtn" class="pill">New REBEL Play</button><button id="saveBtn" class="pill">Save Play</button></div>
+  <button id="newBtn" class="pill wide">New REBEL Play</button>
   <div id="savedList" class="list"></div>
   <button id="closeDialog" class="pill wide" style="margin-top:14px">Close</button>
 </div></dialog>
@@ -312,13 +324,43 @@ function defaults(){return[
 {name:"REBEL COUNTER",action:"HANDOFF",target:"Y",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:195,y:478},{x:285,y:428},{x:350,y:368}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}},
 {name:"REBEL JET PASS",action:"PASS",target:"X",players:clone(BASE),routes:{X:[{x:55,y:350},{x:120,y:280}],C:[{x:210,y:292}],Z:[{x:345,y:350},{x:300,y:280}],QB:[],Y:[{x:166,y:432},{x:220,y:380}],H:[{x:210,y:508},{x:110,y:508},{x:40,y:473}]},fakes:{...emptyFakes(),H:true}}
 ]}
+function encodeSharePlay(p){
+  const json=JSON.stringify(normalizePlay(p));
+  const bytes=new TextEncoder().encode(json);
+  let bin="";bytes.forEach(b=>bin+=String.fromCharCode(b));
+  return btoa(bin).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");
+}
+function decodeSharePlay(v){
+  try{
+    let b64=v.replaceAll("-","+").replaceAll("_","/");
+    while(b64.length%4)b64+="=";
+    const bin=atob(b64),bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));
+    return normalizePlay(JSON.parse(new TextDecoder().decode(bytes)));
+  }catch{return null}
+}
+async function sharePlay(p){
+  const url=location.origin+location.pathname+"#share="+encodeSharePlay(p);
+  const data={title:p.name,text:"Watch "+p.name,url};
+  try{
+    if(navigator.share){await navigator.share(data)}
+    else{
+      await navigator.clipboard.writeText(url);
+      $("#syncStatus").textContent="Share link copied.";
+    }
+  }catch(err){
+    if(err?.name!=="AbortError"){
+      try{await navigator.clipboard.writeText(url);$("#syncStatus").textContent="Share link copied."}catch{}
+    }
+  }
+}
 function renderSaved(){
   const box=$("#savedList");box.innerHTML="";
   saved.forEach((p,i)=>{
     const row=document.createElement("div");row.className="saved";
     const load=document.createElement("button");load.className="pill";load.textContent=p.name;
     load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=extractPersonnel(p.players);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
-    const del=document.createElement("button");del.className="pill";del.textContent="Delete";
+    const share=document.createElement("button");share.className="pill share-btn";share.textContent="Share";share.onclick=()=>sharePlay(p);
+    const del=document.createElement("button");del.className="pill delete-btn";del.textContent="Delete";
     del.onclick=async()=>{
       if(del.classList.contains("busy"))return;
       del.textContent="Deleting…";del.classList.add("busy");
@@ -332,9 +374,7 @@ function renderSaved(){
           if(error)throw error;
           $("#syncStatus").textContent="Play deleted.";
           await loadCloudPlays(false);
-        }else{
-          $("#authMessage").textContent="Play deleted from this phone.";
-        }
+        }else{$("#authMessage").textContent="Play deleted from this phone."}
       }catch(err){
         saved=previous;persist();renderSaved();
         const msg=err?.message||String(err);
@@ -342,7 +382,7 @@ function renderSaved(){
         console.error("deletePlay",err);
       }
     };
-    row.append(load,del);box.append(row)
+    row.append(load,share,del);box.append(row)
   })
 }
 async function saveCurrentPlay(){
@@ -402,7 +442,7 @@ async function saveCurrentPlay(){
     buttons.forEach(b=>b.classList.remove("busy"));
   }
 }
-$("#saveBtn").onclick=saveCurrentPlay;
+if($("#saveBtn"))$("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
 $("#newBtn").onclick=()=>{currentCloudId=null;personnel=clone(DEFAULT_PERSONNEL);players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
 async function loadCloudPlays(showStatus=true){
@@ -470,7 +510,27 @@ $("#signOutBtn").onclick=async()=>{await cloud.auth.signOut();sessionUser=null;c
 $("#refreshCloudBtn").onclick=()=>loadCloudPlays();
 cloud.auth.onAuthStateChange(()=>setTimeout(refreshAuthUI,0));
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&sessionUser)loadCloudPlays(false)});
-renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";renderPersonnel();draw();refreshAuthUI();
+function loadSharedView(){
+  if(!location.hash.startsWith("#share="))return false;
+  const p=decodeSharePlay(location.hash.slice(7));
+  if(!p)return false;
+  document.body.classList.add("shared-view");
+  currentCloudId=null;
+  personnel=extractPersonnel(p.players);
+  players=cleanPlayers(p.players);
+  routes=clone(p.routes||emptyRoutes());
+  fakes=clone(p.fakes||emptyFakes());
+  $("#actionType").value=p.action||"HANDOFF";
+  $("#ballTarget").value=p.target||"H";
+  setName(p.name||"REBEL PLAY");
+  selected="H";
+  draw();
+  return true;
+}
+const isSharedView=loadSharedView();
+if(!isSharedView){
+  renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";renderPersonnel();draw();refreshAuthUI();
+}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script>
 </body>
