@@ -187,8 +187,8 @@ const cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 let sessionUser=null,currentCloudId=null,cloudSyncTimer=null,lastLocalSaveAt=0;
 const BASE={X:{x:55,y:380},C:{x:210,y:380},Z:{x:345,y:380},QB:{x:210,y:452},Y:{x:166,y:520},H:{x:254,y:520}};
 const ORDER=["X","C","Z","QB","Y","H"];
-const ROSTER=["Landon","Jack S","Jack D","Hudson","Grayson","Ethan","Trent","Renee"];
-const DEFAULT_PERSONNEL={QB:"Renee",C:"Trent",H:"Ethan",Y:"Landon",X:"Jack S",Z:"Hudson"};
+const ROSTER=["Landon C","Klumb","Jack S","Jack D","Hudson","Grayson","Ethan","Trent","Renee"];
+const DEFAULT_PERSONNEL={QB:"Renee",C:"Trent",H:"Ethan",Y:"Landon C",X:"Jack S",Z:"Hudson"};
 let personnel=clone(DEFAULT_PERSONNEL),selectedKid=null;
 let players=clone(BASE),routes=emptyRoutes(),fakes=emptyFakes(),selected="H",drawing=false,raf=null;
 let saved=loadSaved();
@@ -196,7 +196,11 @@ function clone(v){return JSON.parse(JSON.stringify(v))}
 function emptyRoutes(){return {X:[],C:[],Z:[],QB:[],Y:[],H:[]}}
 function emptyFakes(){return {X:false,C:false,Z:false,QB:false,Y:false,H:false}}
 function cleanPlayers(p){const q=clone(p||BASE);delete q.__personnel;return q}
-function extractPersonnel(p){return clone((p&&p.__personnel)||{})}
+function extractPersonnel(p){
+  const q=clone((p&&p.__personnel)||{});
+  Object.keys(q).forEach(pos=>{if(q[pos]==="Landon")q[pos]="Landon C"});
+  return q
+}
 function playersForSave(){const q=clone(players);q.__personnel=clone(personnel);return q}
 function E(t,a={}){const e=document.createElementNS(ns,t);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,v));return e}
 function endpoint(n){const a=routes[n];return a&&a.length?a[a.length-1]:players[n]}
@@ -270,7 +274,8 @@ function renderPersonnel(){
     slot.ondrop=e=>{e.preventDefault();const kid=e.dataTransfer.getData("text/plain");if(kid)assignKid(kid,pos)};
     grid.append(slot);
   });
-  ROSTER.forEach(kid=>{
+  const assigned=new Set(Object.values(personnel).filter(Boolean));
+  ROSTER.filter(kid=>!assigned.has(kid)).forEach(kid=>{
     const chip=document.createElement("button");chip.className="kid-chip"+(selectedKid===kid?" selected-kid":"");chip.textContent=kid;chip.draggable=true;
     chip.onclick=()=>{selectedKid=selectedKid===kid?null:kid;renderPersonnel()};
     chip.ondragstart=e=>e.dataTransfer.setData("text/plain",kid);
