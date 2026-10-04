@@ -183,7 +183,7 @@ const $=s=>document.querySelector(s), ns="http://www.w3.org/2000/svg";
 const SUPABASE_URL="https://wyktmcyvduinskonsdwr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_yPM8lMOgGX9gqo7_Nuubxg_OckQb8Ch";
 const cloud=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
-let sessionUser=null,currentCloudId=null,cloudSyncTimer=null;
+let sessionUser=null,currentCloudId=null,cloudSyncTimer=null,lastLocalSaveAt=0;
 const BASE={X:{x:55,y:380},C:{x:210,y:380},Z:{x:345,y:380},QB:{x:210,y:452},Y:{x:166,y:520},H:{x:254,y:520}};
 const ORDER=["X","C","Z","QB","Y","H"];
 const ROSTER=["Landon","Jack S","Jack D","Hudson","Grayson","Ethan","Trent","Renee"];
@@ -315,7 +315,7 @@ $("#playBtn").onclick=()=>{
   raf=requestAnimationFrame(tick);
 };
 $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("#football").setAttribute("transform","translate(0 0)")};
-$("#playsBtn").onclick=async()=>{$("#playsDialog").showModal();if(sessionUser)await loadCloudPlays()};$("#closeDialog").onclick=()=>$("#playsDialog").close();
+$("#playsBtn").onclick=()=>{$("#playsDialog").showModal();renderSaved();if(sessionUser)setTimeout(()=>loadCloudPlays(false),250)};$("#closeDialog").onclick=()=>$("#playsDialog").close();
 function snap(){return{id:currentCloudId||undefined,name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:playersForSave(),routes:clone(routes),fakes:clone(fakes)}}
 function normalizePlay(p){if(p.action&&p.target)return p;const isPass=(p.name||"").toUpperCase().includes("PASS")||p.ball==="QB";return {...p,action:isPass?"PASS":"HANDOFF",target:isPass?"X":(p.ball||"H")}}
 function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v.map(normalizePlay)}catch{}return defaults()}
@@ -394,6 +394,7 @@ async function saveCurrentPlay(){
   if(diagram)diagram.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24L13 11h7V4l-2.34 2.34A7.96 7.96 0 0 0 12 4Z"/></svg>';
   if($("#saveBtn"))$("#saveBtn").textContent="Saving…";
   const p=snap();
+  lastLocalSaveAt=Date.now();
   const localCopy={...p,id:currentCloudId||p.id};
   const localIndex=saved.findIndex(x=>(localCopy.id&&x.id===localCopy.id)||x.name===localCopy.name);
   if(localIndex>=0)saved[localIndex]=localCopy;else saved.push(localCopy);
@@ -423,12 +424,14 @@ async function saveCurrentPlay(){
       }
       if(result.error)throw result.error;
     }
-    if(result&&result.data&&result.data.id)currentCloudId=result.data.id;
-    const idx=saved.findIndex(x=>x.name===p.name);
-    if(idx>=0)saved[idx]={...saved[idx],id:currentCloudId};
-    persist();
-    $("#syncStatus").textContent="Saved to shared playbook."; 
-    await loadCloudPlays(false);
+    if(result&&result.data&&result.data.id){
+      currentCloudId=result.data.id;
+      const cloudCopy={id:result.data.id,name:result.data.name,action:result.data.action,target:result.data.target,players:result.data.players,routes:result.data.routes,fakes:result.data.fakes,updated_at:result.data.updated_at};
+      const idx=saved.findIndex(x=>x.id===currentCloudId||x.name===p.name);
+      if(idx>=0)saved[idx]=cloudCopy;else saved.push(cloudCopy);
+      persist();renderSaved();
+    }
+    $("#syncStatus").textContent="Saved to shared playbook.";
     if(diagram)diagram.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="m9.2 16.6-4.4-4.4 1.4-1.4 3 3 8.6-8.6 1.4 1.4-10 10Z"/></svg>';
     buttons.forEach(b=>b.classList.add("success"));
     setTimeout(()=>buttons.forEach(b=>b.classList.remove("success")),700);
@@ -456,7 +459,15 @@ async function loadCloudPlays(showStatus=true){
     const key=(r.name||"").trim().toLowerCase();
     if(!seen.has(key))seen.set(key,r); else duplicateIds.push(r.id);
   }
-  saved=[...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at}));
+  const cloudRows=[...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at}));
+  if(Date.now()-lastLocalSaveAt<2500){
+    const byId=new Map(cloudRows.map(r=>[r.id,r]));
+    saved=saved.map(local=>local.id&&byId.has(local.id)?local:local);
+    const existingIds=new Set(saved.map(x=>x.id).filter(Boolean));
+    for(const row of cloudRows)if(!existingIds.has(row.id))saved.push(row);
+  }else{
+    saved=cloudRows;
+  }
   persist();renderSaved();
   if(duplicateIds.length){
     const {error:dedupeError}=await cloud.from("plays").delete().in("id",duplicateIds);
