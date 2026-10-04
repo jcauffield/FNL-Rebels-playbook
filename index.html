@@ -75,7 +75,8 @@ body.shared-view #playBtn{display:block}
 .personnel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .personnel-head strong{font-size:13px}
 .personnel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
-.pos-slot{min-height:58px;border:1px dashed var(--line);border-radius:12px;padding:6px;text-align:center;background:rgba(18,35,63,.7)}
+.pos-slot{min-height:58px;border:1px dashed var(--line);border-radius:12px;padding:6px;text-align:center;background:rgba(18,35,63,.7);touch-action:manipulation}
+.pos-slot.selected-slot{outline:2px solid var(--accent);border-style:solid}
 .pos-slot .pos{font-size:10px;color:var(--muted);font-weight:900}
 .pos-slot .kid{font-size:12px;font-weight:900;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .roster-tray{display:flex;flex-wrap:wrap;gap:6px}
@@ -264,36 +265,74 @@ $("#field").addEventListener("click",e=>{if(!drawing)return;const p=$("#field").
 function openName(){ $("#nameEditor").classList.add("open");$("#nameInput").focus();$("#nameInput").select()}
 $("#playName").onclick=openName;$("#editName").onclick=openName;$("#nameDone").onclick=()=>{setName($("#nameInput").value);$("#nameEditor").classList.remove("open")};
 $("#nameInput").addEventListener("keydown",e=>{if(e.key==="Enter"){setName(e.currentTarget.value);$("#nameEditor").classList.remove("open")}});
+let selectedPersonnelPos=null,lastPersonnelTapPos=null,lastPersonnelTapAt=0;
 function renderPersonnel(){
   const grid=$("#personnelGrid"),tray=$("#rosterTray");grid.innerHTML="";tray.innerHTML="";
   ORDER.forEach(pos=>{
-    const slot=document.createElement("button");slot.className="pos-slot";slot.dataset.pos=pos;
+    const slot=document.createElement("button");slot.className="pos-slot"+(selectedPersonnelPos===pos?" selected-slot":"");slot.dataset.pos=pos;
     slot.innerHTML='<div class="pos">'+pos+'</div><div class="kid">'+(personnel[pos]||"—")+'</div>';
-    slot.onclick=()=>{if(selectedKid){assignKid(selectedKid,pos);selectedKid=null;renderPersonnel()}};
+    slot.onclick=()=>{
+      const now=Date.now();
+      const isDouble=lastPersonnelTapPos===pos&&(now-lastPersonnelTapAt)<350;
+      lastPersonnelTapPos=pos;lastPersonnelTapAt=now;
+
+      if(isDouble&&personnel[pos]){
+        delete personnel[pos];
+        selectedKid=null;selectedPersonnelPos=null;
+        draw();renderPersonnel();
+        return;
+      }
+
+      if(selectedKid){
+        const fromPos=Object.keys(personnel).find(p=>personnel[p]===selectedKid)||selectedPersonnelPos;
+        const targetKid=personnel[pos]||null;
+        if(fromPos&&fromPos!==pos){
+          personnel[pos]=selectedKid;
+          if(targetKid)personnel[fromPos]=targetKid;else delete personnel[fromPos];
+        }else if(!fromPos){
+          personnel[pos]=selectedKid;
+        }
+        selectedKid=null;selectedPersonnelPos=null;
+        draw();renderPersonnel();
+        return;
+      }
+
+      if(personnel[pos]){
+        selectedKid=personnel[pos];
+        selectedPersonnelPos=pos;
+      }else{
+        selectedKid=null;selectedPersonnelPos=null;
+      }
+      renderPersonnel();
+    };
     slot.ondragover=e=>e.preventDefault();
-    slot.ondrop=e=>{e.preventDefault();const kid=e.dataTransfer.getData("text/plain");if(kid)assignKid(kid,pos)};
+    slot.ondrop=e=>{e.preventDefault();const kid=e.dataTransfer.getData("text/plain");if(kid){assignKid(kid,pos);selectedPersonnelPos=null}};
     grid.append(slot);
   });
   const assigned=new Set(Object.values(personnel).filter(Boolean));
   ROSTER.filter(kid=>!assigned.has(kid)).forEach(kid=>{
     const chip=document.createElement("button");chip.className="kid-chip"+(selectedKid===kid?" selected-kid":"");chip.textContent=kid;chip.draggable=true;
-    chip.onclick=()=>{selectedKid=selectedKid===kid?null:kid;renderPersonnel()};
+    chip.onclick=()=>{selectedPersonnelPos=null;selectedKid=selectedKid===kid?null:kid;renderPersonnel()};
     chip.ondragstart=e=>e.dataTransfer.setData("text/plain",kid);
     tray.append(chip);
   });
 }
 function assignKid(kid,pos){
-  Object.keys(personnel).forEach(p=>{if(personnel[p]===kid)delete personnel[p]});
-  if(personnel[pos]){
-    const displaced=personnel[pos];
-    Object.keys(personnel).forEach(p=>{if(personnel[p]===displaced)delete personnel[p]});
+  const fromPos=Object.keys(personnel).find(p=>personnel[p]===kid);
+  const targetKid=personnel[pos]||null;
+  if(fromPos&&fromPos!==pos){
+    personnel[pos]=kid;
+    if(targetKid)personnel[fromPos]=targetKid;else delete personnel[fromPos];
+  }else if(!fromPos){
+    personnel[pos]=kid;
   }
-  personnel[pos]=kid;draw();renderPersonnel();
+  selectedKid=null;selectedPersonnelPos=null;
+  draw();renderPersonnel();
 }
 $("#personnelBtn").onclick=()=>{$("#personnelDrawer").classList.toggle("open");renderPersonnel()};
 $("#personnelDone").onclick=()=>$("#personnelDrawer").classList.remove("open");
-$("#clearPersonnel").onclick=()=>{personnel={};selectedKid=null;draw();renderPersonnel()};
-$("#resetPersonnel").onclick=()=>{personnel=clone(DEFAULT_PERSONNEL);selectedKid=null;draw();renderPersonnel()};
+$("#clearPersonnel").onclick=()=>{personnel={};selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
+$("#resetPersonnel").onclick=()=>{personnel=clone(DEFAULT_PERSONNEL);selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
 function routeAt(n,t){const a=[players[n],...routes[n]];if(a.length<2)return players[n];let ls=[],tot=0;for(let i=1;i<a.length;i++){const l=Math.hypot(a[i].x-a[i-1].x,a[i].y-a[i-1].y);ls.push(l);tot+=l}let d=t*tot;for(let i=0;i<ls.length;i++){if(d<=ls[i]){const f=ls[i]?d/ls[i]:0;return{x:a[i].x+(a[i+1].x-a[i].x)*f,y:a[i].y+(a[i+1].y-a[i].y)*f}}d-=ls[i]}return a[a.length-1]}
 $("#playBtn").onclick=()=>{
   if(raf)cancelAnimationFrame(raf);draw();const gs={};document.querySelectorAll("#players g").forEach(g=>gs[g.dataset.player]=g);
