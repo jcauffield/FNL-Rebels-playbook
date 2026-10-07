@@ -74,6 +74,10 @@ body.shared-view #playBtn{display:block}
 .personnel-drawer.open{display:block}
 .personnel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .personnel-head strong{font-size:13px}
+.quarter-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:7px}
+.quarter-tab{min-height:36px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-weight:900;font-size:11px}
+.quarter-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.quarter-out{font-size:10px;color:var(--muted);font-weight:800;margin-bottom:10px;text-align:center}
 .personnel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
 .pos-slot{min-height:58px;border:1px dashed var(--line);border-radius:12px;padding:6px;text-align:center;background:rgba(18,35,63,.7);touch-action:manipulation}
 .pos-slot.selected-slot{outline:2px solid var(--accent);border-style:solid}
@@ -148,7 +152,14 @@ body.shared-view #playBtn{display:block}
     </div>
 
     <div id="personnelDrawer" class="personnel-drawer">
-      <div class="personnel-head"><strong>Personnel</strong><button id="personnelDone" class="pill">Done</button></div>
+      <div class="personnel-head"><strong>Personnel by Quarter</strong><button id="personnelDone" class="pill">Done</button></div>
+      <div class="quarter-tabs">
+        <button class="quarter-tab active" data-quarter="Q1">Q1</button>
+        <button class="quarter-tab" data-quarter="Q2">Q2</button>
+        <button class="quarter-tab" data-quarter="Q3">Q3</button>
+        <button class="quarter-tab" data-quarter="Q4">Q4</button>
+      </div>
+      <div id="quarterOut" class="quarter-out"></div>
       <div id="personnelGrid" class="personnel-grid"></div>
       <div class="small">Sideline / roster — drag or tap a player, then tap a position.</div>
       <div id="rosterTray" class="roster-tray"></div>
@@ -189,11 +200,30 @@ let sessionUser=null,currentCloudId=null,cloudSyncTimer=null,lastLocalSaveAt=0;
 const BASE={X:{x:55,y:380},C:{x:210,y:380},Z:{x:345,y:380},QB:{x:210,y:452},Y:{x:166,y:520},H:{x:254,y:520}};
 const ORDER=["X","C","Z","QB","Y","H"];
 const ROSTER=["Landon C","Klumb","Jack S","Jack D","Hudson","Grayson","Ethan","Trent","Renee"];
-const DEFAULT_PERSONNEL={QB:"Renee",C:"Trent",H:"Ethan",Y:"Landon C",X:"Jack S",Z:"Hudson"};
-let personnel=clone(DEFAULT_PERSONNEL),selectedKid=null;
+const QUARTER_PRESETS={
+  Q1:{QB:"Trent",C:"Hudson",H:"Klumb",Y:"Landon C",X:"Renee",Z:"Jack D"},
+  Q2:{QB:"Trent",C:"Renee",H:"Ethan",Y:"Landon C",X:"Jack S",Z:"Jack D"},
+  Q3:{QB:"Renee",C:"Hudson",H:"Klumb",Y:"Ethan",X:"Jack S",Z:"Jack D"},
+  Q4:{QB:"Trent",C:"Hudson",H:"Klumb",Y:"Landon C",X:"Ethan",Z:"Jack S"}
+};
+const QUARTER_OUT={Q1:["Ethan","Jack S"],Q2:["Klumb","Hudson"],Q3:["Trent","Landon C"],Q4:["Renee","Jack D"]};
+const PERSONNEL_STORAGE_KEY="fnlRebelsQuarterPersonnelV1";
+let selectedQuarter="Q1",personnelByQuarter=loadQuarterPersonnel(),personnel=clone(personnelByQuarter.Q1),selectedKid=null;
 let players=clone(BASE),routes=emptyRoutes(),fakes=emptyFakes(),selected="H",drawing=false,raf=null;
 let saved=loadSaved();
 function clone(v){return JSON.parse(JSON.stringify(v))}
+function loadQuarterPersonnel(){
+  try{const v=JSON.parse(localStorage.getItem(PERSONNEL_STORAGE_KEY)||"null");if(v&&["Q1","Q2","Q3","Q4"].every(q=>v[q]))return v}catch{}
+  return clone(QUARTER_PRESETS)
+}
+function persistQuarterPersonnel(){localStorage.setItem(PERSONNEL_STORAGE_KEY,JSON.stringify(personnelByQuarter))}
+function saveCurrentQuarterPersonnel(){personnelByQuarter[selectedQuarter]=clone(personnel);persistQuarterPersonnel()}
+function setQuarter(q){
+  if(!QUARTER_PRESETS[q])return;
+  saveCurrentQuarterPersonnel();selectedQuarter=q;personnel=clone(personnelByQuarter[q]);selectedKid=null;selectedPersonnelPos=null;
+  document.querySelectorAll(".quarter-tab").forEach(b=>b.classList.toggle("active",b.dataset.quarter===q));
+  $("#personnelBtn").textContent="👥 Personnel · "+q;renderPersonnel();draw()
+}
 function emptyRoutes(){return {X:[],C:[],Z:[],QB:[],Y:[],H:[]}}
 function emptyFakes(){return {X:false,C:false,Z:false,QB:false,Y:false,H:false}}
 function cleanPlayers(p){const q=clone(p||BASE);delete q.__personnel;return q}
@@ -202,7 +232,7 @@ function extractPersonnel(p){
   Object.keys(q).forEach(pos=>{if(q[pos]==="Landon")q[pos]="Landon C"});
   return q
 }
-function playersForSave(){const q=clone(players);q.__personnel=clone(personnel);return q}
+function playersForSave(){const q=clone(players);q.__personnel=clone(personnel);q.__quarter=selectedQuarter;q.__personnelByQuarter=clone(personnelByQuarter);return q}
 function E(t,a={}){const e=document.createElementNS(ns,t);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,v));return e}
 function endpoint(n){const a=routes[n];return a&&a.length?a[a.length-1]:players[n]}
 function triangle(cx,cy,angle,size=7){const pts=[[size,0],[-size*.65,size*.65],[-size*.65,-size*.65]].map(([x,y])=>{const c=Math.cos(angle),sn=Math.sin(angle);return `${cx+x*c-y*sn},${cy+x*sn+y*c}`}).join(" ");return E("polygon",{points:pts,fill:"#ff5252"})}
@@ -268,6 +298,8 @@ $("#nameInput").addEventListener("keydown",e=>{if(e.key==="Enter"){setName(e.cur
 let selectedPersonnelPos=null,lastPersonnelTapPos=null,lastPersonnelTapAt=0;
 function renderPersonnel(){
   const grid=$("#personnelGrid"),tray=$("#rosterTray");grid.innerHTML="";tray.innerHTML="";
+  document.querySelectorAll(".quarter-tab").forEach(b=>b.classList.toggle("active",b.dataset.quarter===selectedQuarter));
+  $("#quarterOut").textContent="OUT: "+QUARTER_OUT[selectedQuarter].join(" • ");
   ORDER.forEach(pos=>{
     const slot=document.createElement("button");slot.className="pos-slot"+(selectedPersonnelPos===pos?" selected-slot":"");slot.dataset.pos=pos;
     slot.innerHTML='<div class="pos">'+pos+'</div><div class="kid">'+(personnel[pos]||"—")+'</div>';
@@ -277,7 +309,7 @@ function renderPersonnel(){
       lastPersonnelTapPos=pos;lastPersonnelTapAt=now;
 
       if(isDouble&&personnel[pos]){
-        delete personnel[pos];
+        delete personnel[pos];saveCurrentQuarterPersonnel();
         selectedKid=null;selectedPersonnelPos=null;
         draw();renderPersonnel();
         return;
@@ -292,6 +324,7 @@ function renderPersonnel(){
         }else if(!fromPos){
           personnel[pos]=selectedKid;
         }
+        saveCurrentQuarterPersonnel();
         selectedKid=null;selectedPersonnelPos=null;
         draw();renderPersonnel();
         return;
@@ -326,13 +359,16 @@ function assignKid(kid,pos){
   }else if(!fromPos){
     personnel[pos]=kid;
   }
+  saveCurrentQuarterPersonnel();
   selectedKid=null;selectedPersonnelPos=null;
   draw();renderPersonnel();
 }
+document.querySelectorAll(".quarter-tab").forEach(b=>b.onclick=()=>setQuarter(b.dataset.quarter));
 $("#personnelBtn").onclick=()=>{$("#personnelDrawer").classList.toggle("open");renderPersonnel()};
 $("#personnelDone").onclick=()=>$("#personnelDrawer").classList.remove("open");
-$("#clearPersonnel").onclick=()=>{personnel={};selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
-$("#resetPersonnel").onclick=()=>{personnel=clone(DEFAULT_PERSONNEL);selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
+$("#clearPersonnel").onclick=()=>{personnel={};saveCurrentQuarterPersonnel();selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
+$("#resetPersonnel").textContent="Reset Quarter";
+$("#resetPersonnel").onclick=()=>{personnel=clone(QUARTER_PRESETS[selectedQuarter]);saveCurrentQuarterPersonnel();selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
 function routeAt(n,t){const a=[players[n],...routes[n]];if(a.length<2)return players[n];let ls=[],tot=0;for(let i=1;i<a.length;i++){const l=Math.hypot(a[i].x-a[i-1].x,a[i].y-a[i-1].y);ls.push(l);tot+=l}let d=t*tot;for(let i=0;i<ls.length;i++){if(d<=ls[i]){const f=ls[i]?d/ls[i]:0;return{x:a[i].x+(a[i+1].x-a[i].x)*f,y:a[i].y+(a[i+1].y-a[i].y)*f}}d-=ls[i]}return a[a.length-1]}
 $("#playBtn").onclick=()=>{
   if(raf)cancelAnimationFrame(raf);draw();const gs={};document.querySelectorAll("#players g").forEach(g=>gs[g.dataset.player]=g);
@@ -404,7 +440,7 @@ function renderSaved(){
   saved.forEach((p,i)=>{
     const row=document.createElement("div");row.className="saved";
     const load=document.createElement("button");load.className="pill";load.textContent=p.name;
-    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=extractPersonnel(p.players);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=clone(personnelByQuarter[selectedQuarter]);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
     const share=document.createElement("button");share.className="pill share-btn";share.textContent="Share";share.onclick=()=>sharePlay(p);
     const del=document.createElement("button");del.className="pill delete-btn";del.textContent="Delete";
     del.onclick=async()=>{
@@ -493,7 +529,7 @@ async function saveCurrentPlay(){
 }
 if($("#saveBtn"))$("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
-$("#newBtn").onclick=()=>{currentCloudId=null;personnel=clone(DEFAULT_PERSONNEL);players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+$("#newBtn").onclick=()=>{currentCloudId=null;personnel=clone(personnelByQuarter[selectedQuarter]);players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
 async function loadCloudPlays(showStatus=true){
   if(!sessionUser)return;
   if(showStatus)$("#syncStatus").textContent="Syncing shared playbook…";
@@ -573,7 +609,10 @@ function loadSharedView(){
   if(!p)return false;
   document.body.classList.add("shared-view");
   currentCloudId=null;
-  personnel=extractPersonnel(p.players);
+  const sharedQuarter=(p.players&&p.players.__quarter)||"Q1";
+  selectedQuarter=QUARTER_PRESETS[sharedQuarter]?sharedQuarter:"Q1";
+  const sharedLineups=(p.players&&p.players.__personnelByQuarter)||null;
+  personnel=sharedLineups&&sharedLineups[selectedQuarter]?clone(sharedLineups[selectedQuarter]):extractPersonnel(p.players);
   players=cleanPlayers(p.players);
   routes=clone(p.routes||emptyRoutes());
   fakes=clone(p.fakes||emptyFakes());
@@ -586,6 +625,7 @@ function loadSharedView(){
 }
 const isSharedView=loadSharedView();
 if(!isSharedView){
+  $("#personnelBtn").textContent="👥 Personnel · "+selectedQuarter;
   renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";renderPersonnel();draw();refreshAuthUI();
 }
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
