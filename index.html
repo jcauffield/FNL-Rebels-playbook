@@ -46,14 +46,17 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .sheet{padding:16px;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden}.sheet h3{margin:0 0 4px}.sheet p{margin:0 0 16px;color:var(--muted);font-size:13px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wide{width:100%}
 .list{display:flex;flex-direction:column;gap:8px;margin-top:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;max-height:48dvh;padding-right:2px}
-.saved{display:flex;gap:6px;align-items:center}.saved .saved-main{flex:1;text-align:left;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px}.saved .share-btn,.saved .delete-btn{padding:0 10px;min-width:64px}
+.saved{display:flex;gap:6px;align-items:center;transition:transform .12s ease,opacity .12s ease}.saved.dragging{opacity:.72;transform:scale(.99);z-index:5}
+.saved .saved-main{flex:1;text-align:left;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.saved .icon-btn,.saved .drag-handle{width:38px;height:38px;min-width:38px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.saved .icon-btn svg{width:18px;height:18px;background:transparent}
+.saved .drag-handle{cursor:grab;color:var(--muted);touch-action:none;font-size:18px;line-height:1}.saved .drag-handle:active{cursor:grabbing}
 .play-type{font-size:9px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 6px;flex:0 0 auto}
 .play-toolbar{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px}
 .filter-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .filter-tab,.menu-tab{min-height:36px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-weight:900;font-size:11px}
 .filter-tab.active,.menu-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
-.sort-row{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:11px}
-.sort-row select{flex:1;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);padding:8px;font-weight:800}
+.reorder-note{font-size:10px;color:var(--muted);text-align:center;margin-top:1px}
 .menu-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
 .menu-panel{min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .menu-panel[hidden]{display:none!important}
@@ -181,9 +184,7 @@ body.shared-view #playBtn{display:block}
         <button class="filter-tab" data-play-filter="RUN">Run</button>
         <button class="filter-tab" data-play-filter="PASS">Pass</button>
       </div>
-      <label class="sort-row">Sort
-        <select id="playSort"><option value="RECENT">Recently updated</option><option value="NAME">A–Z</option></select>
-      </label>
+      <div class="reorder-note">Drag ⠿ to arrange your play-call order.</div>
     </div>
     <div id="savedList" class="list"></div>
   </section>
@@ -237,9 +238,10 @@ const QUARTER_PRESETS={
 };
 const QUARTER_OUT={Q1:["Ethan","Jack S"],Q2:["Klumb","Hudson"],Q3:["Trent","Landon C"],Q4:["Renee","Jack D"]};
 const PERSONNEL_STORAGE_KEY="fnlRebelsQuarterPersonnelV1";
+const PLAY_ORDER_KEY="fnlRebelsPlayOrderV1";
 let selectedQuarter="Q1",personnelByQuarter=loadQuarterPersonnel(),personnel=clone(personnelByQuarter.Q1),selectedKid=null;
 let players=clone(BASE),routes=emptyRoutes(),fakes=emptyFakes(),selected="H",drawing=false,raf=null;
-let saved=loadSaved(),playFilter="ALL",playSort="RECENT";
+let saved=loadSaved(),playFilter="ALL";
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function loadQuarterPersonnel(){
   try{const v=JSON.parse(localStorage.getItem(PERSONNEL_STORAGE_KEY)||"null");if(v&&["Q1","Q2","Q3","Q4"].every(q=>v[q]))return v}catch{}
@@ -434,7 +436,20 @@ $("#menuBtn").onclick=()=>{showMenuTab("plays");$("#menuDialog").showModal()};
 $("#closeDialog").onclick=()=>$("#menuDialog").close();
 function snap(){return{id:currentCloudId||undefined,name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:playersForSave(),routes:clone(routes),fakes:clone(fakes)}}
 function normalizePlay(p){if(p.action&&p.target)return p;const isPass=(p.name||"").toUpperCase().includes("PASS")||p.ball==="QB";return {...p,action:isPass?"PASS":"HANDOFF",target:isPass?"X":(p.ball||"H")}}
-function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v.map(normalizePlay)}catch{}return defaults()}
+function playKey(p){return p.id?"id:"+p.id:"name:"+((p.name||"").trim().toLowerCase())}
+function loadPlayOrder(){try{const v=JSON.parse(localStorage.getItem(PLAY_ORDER_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return []}}
+function savePlayOrder(){localStorage.setItem(PLAY_ORDER_KEY,JSON.stringify(saved.map(playKey)))}
+function applyStoredPlayOrder(arr){
+  const order=loadPlayOrder(),rank=new Map(order.map((k,i)=>[k,i]));
+  return arr.map((p,i)=>({p,i,r:rank.has(playKey(p))?rank.get(playKey(p)):Number.MAX_SAFE_INTEGER}))
+    .sort((a,b)=>a.r-b.r||a.i-b.i).map(x=>x.p)
+}
+function applyVisiblePlayOrder(keys){
+  const set=new Set(keys),byKey=new Map(saved.map(p=>[playKey(p),p]));let i=0;
+  saved=saved.map(p=>set.has(playKey(p))?(byKey.get(keys[i++])||p):p);
+  savePlayOrder();persist();renderSaved()
+}
+function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return applyStoredPlayOrder(v.map(normalizePlay))}catch{}return applyStoredPlayOrder(defaults())}
 function persist(){localStorage.setItem("fnlRebelsPlays",JSON.stringify(saved))}
 function defaults(){return[
 {name:"REBEL JET",action:"HANDOFF",target:"H",players:clone(BASE),routes:{X:[{x:55,y:250}],C:[{x:210,y:292}],Z:[{x:345,y:250}],QB:[],Y:[{x:166,y:432}],H:[{x:210,y:508},{x:115,y:508},{x:45,y:466}]},fakes:emptyFakes()},
@@ -471,41 +486,64 @@ async function sharePlay(p){
   }
 }
 function playType(p){return normalizePlay(p).action==="PASS"?"PASS":"RUN"}
+function iconSvg(kind){
+  if(kind==="share")return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.4 1.2L8.9 13.8a3.2 3.2 0 0 0 0-3.6l6.7-3.4A3 3 0 1 0 15 5c0 .2 0 .4.1.6L8.4 9A3 3 0 1 0 8.4 15l6.7 3.4A3 3 0 1 0 18 16Z"/></svg>';
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 3h8l1 2h4v2H3V5h4l1-2Zm-2 6h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z"/></svg>'
+}
+let playDrag=null;
+function bindPlayDrag(handle,row,box){
+  handle.onpointerdown=e=>{
+    e.preventDefault();e.stopPropagation();playDrag={row,box,id:e.pointerId};row.classList.add("dragging");
+    try{handle.setPointerCapture(e.pointerId)}catch{}
+  };
+  handle.onpointermove=e=>{
+    if(!playDrag||playDrag.id!==e.pointerId)return;
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(".saved");
+    if(!target||target===row||target.parentElement!==box)return;
+    const rect=target.getBoundingClientRect(),before=e.clientY<rect.top+rect.height/2;
+    box.insertBefore(row,before?target:target.nextSibling)
+  };
+  const finish=e=>{
+    if(!playDrag||playDrag.id!==e.pointerId)return;
+    row.classList.remove("dragging");
+    const keys=[...box.querySelectorAll(".saved")].map(x=>x.dataset.playKey);
+    playDrag=null;applyVisiblePlayOrder(keys)
+  };
+  handle.onpointerup=finish;handle.onpointercancel=finish
+}
 function renderSaved(){
   const box=$("#savedList");box.innerHTML="";
   document.querySelectorAll(".filter-tab").forEach(b=>b.classList.toggle("active",b.dataset.playFilter===playFilter));
-  if($("#playSort"))$("#playSort").value=playSort;
-  let view=saved.map(normalizePlay).filter(p=>playFilter==="ALL"||playType(p)===playFilter);
-  view.sort((a,b)=>playSort==="NAME"?(a.name||"").localeCompare(b.name||""):(new Date(b.updated_at||0)-new Date(a.updated_at||0)));
+  const view=saved.map(normalizePlay).filter(p=>playFilter==="ALL"||playType(p)===playFilter);
   if(!view.length){const empty=document.createElement("div");empty.className="small";empty.textContent="No "+(playFilter==="ALL"?"saved":playFilter.toLowerCase())+" plays yet.";box.append(empty);return}
   view.forEach(p=>{
-    const row=document.createElement("div");row.className="saved";
+    const row=document.createElement("div");row.className="saved";row.dataset.playKey=playKey(p);
+    const drag=document.createElement("button");drag.className="pill drag-handle";drag.type="button";drag.setAttribute("aria-label","Drag to reorder");drag.textContent="⠿";
     const load=document.createElement("button");load.className="pill saved-main";
     const title=document.createElement("span");title.textContent=p.name;
     const badge=document.createElement("span");badge.className="play-type";badge.textContent=playType(p);
     load.append(title,badge);
     load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=clone(personnelByQuarter[selectedQuarter]);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#menuDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
-    const share=document.createElement("button");share.className="pill share-btn";share.textContent="Share";share.onclick=()=>sharePlay(p);
-    const del=document.createElement("button");del.className="pill delete-btn";del.textContent="Delete";
+    const share=document.createElement("button");share.className="pill icon-btn share-btn";share.type="button";share.setAttribute("aria-label","Share "+p.name);share.title="Share";share.innerHTML=iconSvg("share");share.onclick=()=>sharePlay(p);
+    const del=document.createElement("button");del.className="pill icon-btn delete-btn";del.type="button";del.setAttribute("aria-label","Delete "+p.name);del.title="Delete";del.innerHTML=iconSvg("trash");
     del.onclick=async()=>{
       if(del.classList.contains("busy"))return;
-      del.textContent="Deleting…";del.classList.add("busy");
-      const previous=[...saved];
-      saved=saved.filter(x=>x.id!==p.id && x.name!==p.name);persist();renderSaved();
+      del.classList.add("busy");
+      const previous=[...saved],previousOrder=loadPlayOrder();
+      saved=saved.filter(x=>x.id!==p.id && x.name!==p.name);savePlayOrder();persist();renderSaved();
       try{
         const {data:{session}}=await cloud.auth.getSession();sessionUser=session?.user||null;
         if(p.id&&sessionUser){const {error}=await cloud.from("plays").delete().eq("id",p.id);if(error)throw error;$("#syncStatus").textContent="Play deleted.";await loadCloudPlays(false)}
         else $("#authMessage").textContent="Play deleted from this phone.";
       }catch(err){
-        saved=previous;persist();renderSaved();const msg=err?.message||String(err);
+        saved=previous;localStorage.setItem(PLAY_ORDER_KEY,JSON.stringify(previousOrder));persist();renderSaved();const msg=err?.message||String(err);
         if(sessionUser)$("#syncStatus").textContent="Delete failed: "+msg;else $("#authMessage").textContent="Delete failed: "+msg;console.error("deletePlay",err)
       }
     };
-    row.append(load,share,del);box.append(row)
+    row.append(drag,load,share,del);box.append(row);bindPlayDrag(drag,row,box)
   })
 }
 document.querySelectorAll(".filter-tab").forEach(b=>b.onclick=()=>{playFilter=b.dataset.playFilter;renderSaved()});
-$("#playSort").onchange=e=>{playSort=e.target.value;renderSaved()};
 async function saveCurrentPlay(){
   const buttons=[$("#saveBtn"),$("#diagramSaveBtn")].filter(Boolean);
   if(buttons.some(b=>b.classList.contains("busy")))return;
@@ -579,7 +617,7 @@ async function loadCloudPlays(showStatus=true){
     const key=(r.name||"").trim().toLowerCase();
     if(!seen.has(key))seen.set(key,r); else duplicateIds.push(r.id);
   }
-  const cloudRows=[...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at}));
+  const cloudRows=applyStoredPlayOrder([...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at})));
   if(Date.now()-lastLocalSaveAt<2500){
     const byId=new Map(cloudRows.map(r=>[r.id,r]));
     saved=saved.map(local=>local.id&&byId.has(local.id)?local:local);
