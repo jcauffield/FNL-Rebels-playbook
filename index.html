@@ -52,8 +52,10 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .saved .play-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:1}
 .saved .icon-btn{width:36px;height:36px;min-width:36px;min-height:36px;max-width:36px;max-height:36px;flex:0 0 36px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;aspect-ratio:1/1}
 .saved .icon-btn svg{width:17px;height:17px;background:transparent}
-.saved .drag-handle{width:30px;height:38px;min-width:30px;padding:0;border:0;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;font-size:17px;line-height:1}
+.saved .drag-handle{width:30px;height:38px;min-width:30px;padding:0;border:0;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;font-size:17px;line-height:1;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .saved .drag-handle:active{cursor:grabbing}
+.list.reordering{overflow-y:hidden;touch-action:none}
+body.reordering{overscroll-behavior:none}
 .play-type{font-size:8px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 5px;flex:0 0 auto;letter-spacing:.3px}
 .play-toolbar{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px}
 .filter-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
@@ -494,25 +496,53 @@ function iconSvg(kind){
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 3h8l1 2h4v2H3V5h4l1-2Zm-2 6h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z"/></svg>'
 }
 let playDrag=null;
+function finishPlayDrag(){
+  if(!playDrag)return;
+  const {row,box}=playDrag;
+  row.classList.remove("dragging");box.classList.remove("reordering");document.body.classList.remove("reordering");
+  const keys=[...box.querySelectorAll(".saved")].map(x=>x.dataset.playKey);
+  playDrag=null;applyVisiblePlayOrder(keys)
+}
+function movePlayDrag(clientX,clientY){
+  if(!playDrag)return;
+  const {row,box}=playDrag;
+  const target=document.elementFromPoint(clientX,clientY)?.closest(".saved");
+  if(!target||target===row||target.parentElement!==box)return;
+  const rect=target.getBoundingClientRect(),before=clientY<rect.top+rect.height/2;
+  box.insertBefore(row,before?target:target.nextSibling)
+}
 function bindPlayDrag(handle,row,box){
   handle.onpointerdown=e=>{
-    e.preventDefault();e.stopPropagation();playDrag={row,box,id:e.pointerId};row.classList.add("dragging");
+    if(playDrag)return;
+    e.preventDefault();e.stopPropagation();
+    playDrag={row,box,id:e.pointerId};
+    row.classList.add("dragging");box.classList.add("reordering");document.body.classList.add("reordering");
     try{handle.setPointerCapture(e.pointerId)}catch{}
   };
-  handle.onpointermove=e=>{
+  const pointerMove=e=>{
     if(!playDrag||playDrag.id!==e.pointerId)return;
-    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(".saved");
-    if(!target||target===row||target.parentElement!==box)return;
-    const rect=target.getBoundingClientRect(),before=e.clientY<rect.top+rect.height/2;
-    box.insertBefore(row,before?target:target.nextSibling)
+    e.preventDefault();movePlayDrag(e.clientX,e.clientY)
   };
-  const finish=e=>{
+  const pointerEnd=e=>{
     if(!playDrag||playDrag.id!==e.pointerId)return;
-    row.classList.remove("dragging");
-    const keys=[...box.querySelectorAll(".saved")].map(x=>x.dataset.playKey);
-    playDrag=null;applyVisiblePlayOrder(keys)
+    e.preventDefault();finishPlayDrag()
   };
-  handle.onpointerup=finish;handle.onpointercancel=finish
+  handle.addEventListener("pointermove",pointerMove,{passive:false});
+  handle.addEventListener("pointerup",pointerEnd,{passive:false});
+  handle.addEventListener("pointercancel",pointerEnd,{passive:false});
+
+  handle.addEventListener("touchstart",e=>{
+    if(playDrag||!e.touches?.length)return;
+    e.preventDefault();e.stopPropagation();
+    const t=e.touches[0];playDrag={row,box,id:"touch"};
+    row.classList.add("dragging");box.classList.add("reordering");document.body.classList.add("reordering");
+  },{passive:false});
+  handle.addEventListener("touchmove",e=>{
+    if(!playDrag||playDrag.id!=="touch"||!e.touches?.length)return;
+    e.preventDefault();const t=e.touches[0];movePlayDrag(t.clientX,t.clientY)
+  },{passive:false});
+  handle.addEventListener("touchend",e=>{if(playDrag?.id==="touch"){e.preventDefault();finishPlayDrag()}},{passive:false});
+  handle.addEventListener("touchcancel",e=>{if(playDrag?.id==="touch"){e.preventDefault();finishPlayDrag()}},{passive:false});
 }
 function renderSaved(){
   const box=$("#savedList");box.innerHTML="";
