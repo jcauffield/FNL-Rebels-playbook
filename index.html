@@ -46,12 +46,15 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .sheet{padding:16px;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden}.sheet h3{margin:0 0 4px}.sheet p{margin:0 0 16px;color:var(--muted);font-size:13px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wide{width:100%}
 .list{display:flex;flex-direction:column;gap:8px;margin-top:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;max-height:48dvh;padding-right:2px}
-.saved{display:flex;gap:6px;align-items:center;transition:transform .12s ease,opacity .12s ease}.saved.dragging{opacity:.72;transform:scale(.99);z-index:5}
-.saved .saved-main{flex:1;text-align:left;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.saved .icon-btn,.saved .drag-handle{width:38px;height:38px;min-width:38px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.saved .icon-btn svg{width:18px;height:18px;background:transparent}
-.saved .drag-handle{cursor:grab;color:var(--muted);touch-action:none;font-size:18px;line-height:1}.saved .drag-handle:active{cursor:grabbing}
-.play-type{font-size:9px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 6px;flex:0 0 auto}
+.saved{display:flex;gap:7px;align-items:center;transition:transform .12s ease,opacity .12s ease}.saved.dragging{opacity:.72;transform:scale(.99);z-index:5}
+.saved .saved-main{flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:999px;background:rgba(18,35,63,.96);display:flex;align-items:center;gap:4px;padding:0 8px 0 4px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.saved .play-open{flex:1;min-width:0;height:42px;border:0;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:7px;padding:0 2px 0 5px;font-weight:900;text-align:left}
+.saved .play-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:1}
+.saved .icon-btn{width:36px;height:36px;min-width:36px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.saved .icon-btn svg{width:17px;height:17px;background:transparent}
+.saved .drag-handle{width:30px;height:38px;min-width:30px;padding:0;border:0;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;font-size:17px;line-height:1}
+.saved .drag-handle:active{cursor:grabbing}
+.play-type{font-size:8px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 5px;flex:0 0 auto;letter-spacing:.3px}
 .play-toolbar{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px}
 .filter-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .filter-tab,.menu-tab{min-height:36px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-weight:900;font-size:11px}
@@ -518,11 +521,12 @@ function renderSaved(){
   if(!view.length){const empty=document.createElement("div");empty.className="small";empty.textContent="No "+(playFilter==="ALL"?"saved":playFilter.toLowerCase())+" plays yet.";box.append(empty);return}
   view.forEach(p=>{
     const row=document.createElement("div");row.className="saved";row.dataset.playKey=playKey(p);
-    const drag=document.createElement("button");drag.className="pill drag-handle";drag.type="button";drag.setAttribute("aria-label","Drag to reorder");drag.textContent="⠿";
-    const load=document.createElement("button");load.className="pill saved-main";
-    const title=document.createElement("span");title.textContent=p.name;
+    const main=document.createElement("div");main.className="saved-main";
+    const drag=document.createElement("button");drag.className="drag-handle";drag.type="button";drag.setAttribute("aria-label","Drag to reorder");drag.textContent="⠿";
+    const load=document.createElement("button");load.className="play-open";load.type="button";
+    const title=document.createElement("span");title.className="play-title";title.textContent=p.name;
     const badge=document.createElement("span");badge.className="play-type";badge.textContent=playType(p);
-    load.append(title,badge);
+    load.append(title,badge);main.append(drag,load);
     load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=clone(personnelByQuarter[selectedQuarter]);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#menuDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
     const share=document.createElement("button");share.className="pill icon-btn share-btn";share.type="button";share.setAttribute("aria-label","Share "+p.name);share.title="Share";share.innerHTML=iconSvg("share");share.onclick=()=>sharePlay(p);
     const del=document.createElement("button");del.className="pill icon-btn delete-btn";del.type="button";del.setAttribute("aria-label","Delete "+p.name);del.title="Delete";del.innerHTML=iconSvg("trash");
@@ -540,7 +544,7 @@ function renderSaved(){
         if(sessionUser)$("#syncStatus").textContent="Delete failed: "+msg;else $("#authMessage").textContent="Delete failed: "+msg;console.error("deletePlay",err)
       }
     };
-    row.append(drag,load,share,del);box.append(row);bindPlayDrag(drag,row,box)
+    row.append(main,share,del);box.append(row);bindPlayDrag(drag,row,box)
   })
 }
 document.querySelectorAll(".filter-tab").forEach(b=>b.onclick=()=>{playFilter=b.dataset.playFilter;renderSaved()});
