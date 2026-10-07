@@ -13,10 +13,9 @@ body{min-height:100dvh;overflow:hidden}
 button,select,input{font:inherit}
 .app{height:100dvh;width:100vw;display:flex;align-items:stretch;justify-content:center;background:var(--bg)}
 .field-wrap{position:relative;width:min(100vw,520px);height:100dvh;overflow:hidden;background:var(--panel)}
-.top-left-stack{position:absolute;left:10px;top:max(10px,env(safe-area-inset-top));z-index:20;display:flex;flex-direction:column;gap:6px;align-items:flex-start;width:145px}
+.top-left-stack{position:absolute;left:10px;top:max(10px,env(safe-area-inset-top));z-index:20;display:flex;align-items:flex-start}
 .top-left{position:static}
-.top-left-stack .pill{max-width:145px;padding:0 12px;font-size:12px;white-space:nowrap}
-#personnelBtn{margin-top:14px}
+.top-left-stack .pill{padding:0 14px;font-size:12px;white-space:nowrap}
 .top-right-stack{position:absolute;right:10px;top:max(10px,env(safe-area-inset-top));z-index:20;display:flex;flex-direction:column;gap:6px;align-items:flex-end;background:transparent}
 #playBtn{margin-top:8px}
 .save-icon{width:48px;height:48px;min-width:48px;min-height:48px;padding:0;color:#fff;display:flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden}
@@ -47,8 +46,19 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .sheet{padding:16px;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden}.sheet h3{margin:0 0 4px}.sheet p{margin:0 0 16px;color:var(--muted);font-size:13px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wide{width:100%}
 .list{display:flex;flex-direction:column;gap:8px;margin-top:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;max-height:48dvh;padding-right:2px}
-.saved{display:flex;gap:6px;align-items:center}.saved button:first-child{flex:1;text-align:left;min-width:0}.saved .share-btn,.saved .delete-btn{padding:0 10px;min-width:70px}
+.saved{display:flex;gap:6px;align-items:center}.saved .saved-main{flex:1;text-align:left;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px}.saved .share-btn,.saved .delete-btn{padding:0 10px;min-width:64px}
+.play-type{font-size:9px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 6px;flex:0 0 auto}
+.play-toolbar{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px}
+.filter-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.filter-tab,.menu-tab{min-height:36px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-weight:900;font-size:11px}
+.filter-tab.active,.menu-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.sort-row{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:11px}
+.sort-row select{flex:1;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);padding:8px;font-weight:800}
+.menu-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
+.menu-panel{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.menu-panel[hidden]{display:none!important}
 body.shared-view .top-left-stack,
+body.shared-view #menuDialog,
 body.shared-view #diagramSaveBtn,
 body.shared-view .route-wrap,
 body.shared-view .bottom-controls,
@@ -95,8 +105,7 @@ body.shared-view #playBtn{display:block}
 <div class="app">
   <div class="field-wrap">
     <div class="top-left-stack">
-      <button id="playsBtn" class="pill top-left">☰ Plays</button>
-      <button id="personnelBtn" class="pill">👥 Personnel</button>
+      <button id="menuBtn" class="pill top-left">☰ Menu</button>
     </div>
     <div class="top-right-stack">
       <button id="diagramSaveBtn" class="pill save-icon" aria-label="Save play" title="Save play"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" focusable="false"><path fill="currentColor" d="M5 3h12.6L21 6.4V21H3V3h2Zm1 2v5h10V5H6Zm-1 8v6h14V8.1L16.9 5H18v8H5Zm3 2h8v4H8v-4Z"/></svg></button>
@@ -151,42 +160,62 @@ body.shared-view #playBtn{display:block}
       </div>
     </div>
 
-    <div id="personnelDrawer" class="personnel-drawer">
-      <div class="personnel-head"><strong>Personnel by Quarter</strong><button id="personnelDone" class="pill">Done</button></div>
-      <div class="quarter-tabs">
-        <button class="quarter-tab active" data-quarter="Q1">Q1</button>
-        <button class="quarter-tab" data-quarter="Q2">Q2</button>
-        <button class="quarter-tab" data-quarter="Q3">Q3</button>
-        <button class="quarter-tab" data-quarter="Q4">Q4</button>
-      </div>
-      <div id="quarterOut" class="quarter-out"></div>
-      <div id="personnelGrid" class="personnel-grid"></div>
-      <div class="small">Sideline / roster — drag or tap a player, then tap a position.</div>
-      <div id="rosterTray" class="roster-tray"></div>
-      <div class="personnel-actions"><button id="clearPersonnel" class="pill">Clear</button><button id="resetPersonnel" class="pill">Reset Lineup</button></div>
-    </div>
     <div class="bottom-keys"><div class="key pass">▲ ▲ ▲ = pass</div><div class="key">Solid = route • Dashed = fake</div></div>
     <div class="bottom-center"><button id="selected" class="selected">H selected</button></div>
     <div class="bottom-controls"><button id="drawBtn" class="pill">✏ Draw</button><button id="resetBtn" class="pill">↺ Reset</button></div>
   </div>
 </div>
 
-<dialog id="playsDialog"><div class="sheet">
-  <h3>Playbook</h3><p>Every new play starts in REBEL.</p>
-  <div id="authBox" class="auth-box">
-    <div id="authSignedOut">
-      <div class="auth-status">Sign in to share plays with your coaching staff.</div>
-      <div class="auth-row"><input id="coachEmail" type="email" inputmode="email" autocomplete="email" placeholder="Coach email"><button id="magicLinkBtn" class="pill">Send Link</button></div>
-      <div id="authMessage" class="sync-note"></div>
-    </div>
-    <div id="authSignedIn" hidden>
-      <div id="signedInAs" class="auth-status"></div>
-      <div class="auth-row"><button id="refreshCloudBtn" class="pill">↻ Sync Plays</button><button id="signOutBtn" class="pill">Sign Out</button></div>
-      <div id="syncStatus" class="sync-note">Shared cloud playbook connected.</div>
-    </div>
+<dialog id="menuDialog"><div class="sheet">
+  <div class="menu-tabs">
+    <button class="menu-tab active" data-menu-tab="plays">Plays</button>
+    <button class="menu-tab" data-menu-tab="personnel">Personnel</button>
+    <button class="menu-tab" data-menu-tab="settings">Settings</button>
   </div>
-  <button id="newBtn" class="pill wide">New REBEL Play</button>
-  <div id="savedList" class="list"></div>
+  <section id="playsPanel" class="menu-panel">
+    <h3>Playbook</h3><p>Every new play starts in REBEL.</p>
+    <button id="newBtn" class="pill wide">New REBEL Play</button>
+    <div class="play-toolbar">
+      <div class="filter-tabs">
+        <button class="filter-tab active" data-play-filter="ALL">All</button>
+        <button class="filter-tab" data-play-filter="RUN">Run</button>
+        <button class="filter-tab" data-play-filter="PASS">Pass</button>
+      </div>
+      <label class="sort-row">Sort
+        <select id="playSort"><option value="RECENT">Recently updated</option><option value="NAME">A–Z</option></select>
+      </label>
+    </div>
+    <div id="savedList" class="list"></div>
+  </section>
+  <section id="personnelPanel" class="menu-panel" hidden>
+    <div class="personnel-head"><strong>Personnel by Quarter</strong></div>
+    <div class="quarter-tabs">
+      <button class="quarter-tab active" data-quarter="Q1">Q1</button>
+      <button class="quarter-tab" data-quarter="Q2">Q2</button>
+      <button class="quarter-tab" data-quarter="Q3">Q3</button>
+      <button class="quarter-tab" data-quarter="Q4">Q4</button>
+    </div>
+    <div id="quarterOut" class="quarter-out"></div>
+    <div id="personnelGrid" class="personnel-grid"></div>
+    <div class="small">Sideline / roster — drag or tap a player, then tap a position.</div>
+    <div id="rosterTray" class="roster-tray"></div>
+    <div class="personnel-actions"><button id="clearPersonnel" class="pill">Clear</button><button id="resetPersonnel" class="pill">Reset Quarter</button></div>
+  </section>
+  <section id="settingsPanel" class="menu-panel" hidden>
+    <h3>Settings</h3><p>Coach account and shared playbook sync.</p>
+    <div id="authBox" class="auth-box">
+      <div id="authSignedOut">
+        <div class="auth-status">Sign in to share plays with your coaching staff.</div>
+        <div class="auth-row"><input id="coachEmail" type="email" inputmode="email" autocomplete="email" placeholder="Coach email"><button id="magicLinkBtn" class="pill">Send Link</button></div>
+        <div id="authMessage" class="sync-note"></div>
+      </div>
+      <div id="authSignedIn" hidden>
+        <div id="signedInAs" class="auth-status"></div>
+        <div class="auth-row"><button id="refreshCloudBtn" class="pill">↻ Sync Plays</button><button id="signOutBtn" class="pill">Sign Out</button></div>
+        <div id="syncStatus" class="sync-note">Shared cloud playbook connected.</div>
+      </div>
+    </div>
+  </section>
   <button id="closeDialog" class="pill wide" style="margin-top:14px">Close</button>
 </div></dialog>
 
@@ -210,7 +239,7 @@ const QUARTER_OUT={Q1:["Ethan","Jack S"],Q2:["Klumb","Hudson"],Q3:["Trent","Land
 const PERSONNEL_STORAGE_KEY="fnlRebelsQuarterPersonnelV1";
 let selectedQuarter="Q1",personnelByQuarter=loadQuarterPersonnel(),personnel=clone(personnelByQuarter.Q1),selectedKid=null;
 let players=clone(BASE),routes=emptyRoutes(),fakes=emptyFakes(),selected="H",drawing=false,raf=null;
-let saved=loadSaved();
+let saved=loadSaved(),playFilter="ALL",playSort="RECENT";
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function loadQuarterPersonnel(){
   try{const v=JSON.parse(localStorage.getItem(PERSONNEL_STORAGE_KEY)||"null");if(v&&["Q1","Q2","Q3","Q4"].every(q=>v[q]))return v}catch{}
@@ -222,7 +251,7 @@ function setQuarter(q){
   if(!QUARTER_PRESETS[q])return;
   saveCurrentQuarterPersonnel();selectedQuarter=q;personnel=clone(personnelByQuarter[q]);selectedKid=null;selectedPersonnelPos=null;
   document.querySelectorAll(".quarter-tab").forEach(b=>b.classList.toggle("active",b.dataset.quarter===q));
-  $("#personnelBtn").textContent="👥 Personnel · "+q;renderPersonnel();draw()
+  renderPersonnel();draw()
 }
 function emptyRoutes(){return {X:[],C:[],Z:[],QB:[],Y:[],H:[]}}
 function emptyFakes(){return {X:false,C:false,Z:false,QB:false,Y:false,H:false}}
@@ -364,8 +393,6 @@ function assignKid(kid,pos){
   draw();renderPersonnel();
 }
 document.querySelectorAll(".quarter-tab").forEach(b=>b.onclick=()=>setQuarter(b.dataset.quarter));
-$("#personnelBtn").onclick=()=>{$("#personnelDrawer").classList.toggle("open");renderPersonnel()};
-$("#personnelDone").onclick=()=>$("#personnelDrawer").classList.remove("open");
 $("#clearPersonnel").onclick=()=>{personnel={};saveCurrentQuarterPersonnel();selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
 $("#resetPersonnel").textContent="Reset Quarter";
 $("#resetPersonnel").onclick=()=>{personnel=clone(QUARTER_PRESETS[selectedQuarter]);saveCurrentQuarterPersonnel();selectedKid=null;selectedPersonnelPos=null;draw();renderPersonnel()};
@@ -396,7 +423,15 @@ $("#playBtn").onclick=()=>{
   raf=requestAnimationFrame(tick);
 };
 $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("#football").setAttribute("transform","translate(0 0)")};
-$("#playsBtn").onclick=()=>{$("#playsDialog").showModal();renderSaved();if(sessionUser)setTimeout(()=>loadCloudPlays(false),250)};$("#closeDialog").onclick=()=>$("#playsDialog").close();
+function showMenuTab(tab){
+  document.querySelectorAll(".menu-tab").forEach(b=>b.classList.toggle("active",b.dataset.menuTab===tab));
+  $("#playsPanel").hidden=tab!=="plays";$("#personnelPanel").hidden=tab!=="personnel";$("#settingsPanel").hidden=tab!=="settings";
+  if(tab==="plays"){renderSaved();if(sessionUser)setTimeout(()=>loadCloudPlays(false),250)}
+  if(tab==="personnel")renderPersonnel();
+}
+document.querySelectorAll(".menu-tab").forEach(b=>b.onclick=()=>showMenuTab(b.dataset.menuTab));
+$("#menuBtn").onclick=()=>{showMenuTab("plays");$("#menuDialog").showModal()};
+$("#closeDialog").onclick=()=>$("#menuDialog").close();
 function snap(){return{id:currentCloudId||undefined,name:$("#playName").textContent,action:$("#actionType").value,target:$("#ballTarget").value,players:playersForSave(),routes:clone(routes),fakes:clone(fakes)}}
 function normalizePlay(p){if(p.action&&p.target)return p;const isPass=(p.name||"").toUpperCase().includes("PASS")||p.ball==="QB";return {...p,action:isPass?"PASS":"HANDOFF",target:isPass?"X":(p.ball||"H")}}
 function loadSaved(){try{const v=JSON.parse(localStorage.getItem("fnlRebelsPlays")||"null");if(Array.isArray(v)&&v.length)return v.map(normalizePlay)}catch{}return defaults()}
@@ -435,12 +470,21 @@ async function sharePlay(p){
     }
   }
 }
+function playType(p){return normalizePlay(p).action==="PASS"?"PASS":"RUN"}
 function renderSaved(){
   const box=$("#savedList");box.innerHTML="";
-  saved.forEach((p,i)=>{
+  document.querySelectorAll(".filter-tab").forEach(b=>b.classList.toggle("active",b.dataset.playFilter===playFilter));
+  if($("#playSort"))$("#playSort").value=playSort;
+  let view=saved.map(normalizePlay).filter(p=>playFilter==="ALL"||playType(p)===playFilter);
+  view.sort((a,b)=>playSort==="NAME"?(a.name||"").localeCompare(b.name||""):(new Date(b.updated_at||0)-new Date(a.updated_at||0)));
+  if(!view.length){const empty=document.createElement("div");empty.className="small";empty.textContent="No "+(playFilter==="ALL"?"saved":playFilter.toLowerCase())+" plays yet.";box.append(empty);return}
+  view.forEach(p=>{
     const row=document.createElement("div");row.className="saved";
-    const load=document.createElement("button");load.className="pill";load.textContent=p.name;
-    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=clone(personnelByQuarter[selectedQuarter]);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+    const load=document.createElement("button");load.className="pill saved-main";
+    const title=document.createElement("span");title.textContent=p.name;
+    const badge=document.createElement("span");badge.className="play-type";badge.textContent=playType(p);
+    load.append(title,badge);
+    load.onclick=()=>{p=normalizePlay(p);currentCloudId=p.id||null;personnel=clone(personnelByQuarter[selectedQuarter]);players=cleanPlayers(p.players);routes=clone(p.routes);fakes=clone(p.fakes||emptyFakes());$("#actionType").value=p.action;$("#ballTarget").value=p.target;setName(p.name);$("#menuDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
     const share=document.createElement("button");share.className="pill share-btn";share.textContent="Share";share.onclick=()=>sharePlay(p);
     const del=document.createElement("button");del.className="pill delete-btn";del.textContent="Delete";
     del.onclick=async()=>{
@@ -449,24 +493,19 @@ function renderSaved(){
       const previous=[...saved];
       saved=saved.filter(x=>x.id!==p.id && x.name!==p.name);persist();renderSaved();
       try{
-        const {data:{session}}=await cloud.auth.getSession();
-        sessionUser=session?.user||null;
-        if(p.id&&sessionUser){
-          const {error}=await cloud.from("plays").delete().eq("id",p.id);
-          if(error)throw error;
-          $("#syncStatus").textContent="Play deleted.";
-          await loadCloudPlays(false);
-        }else{$("#authMessage").textContent="Play deleted from this phone."}
+        const {data:{session}}=await cloud.auth.getSession();sessionUser=session?.user||null;
+        if(p.id&&sessionUser){const {error}=await cloud.from("plays").delete().eq("id",p.id);if(error)throw error;$("#syncStatus").textContent="Play deleted.";await loadCloudPlays(false)}
+        else $("#authMessage").textContent="Play deleted from this phone.";
       }catch(err){
-        saved=previous;persist();renderSaved();
-        const msg=err?.message||String(err);
-        if(sessionUser)$("#syncStatus").textContent="Delete failed: "+msg; else $("#authMessage").textContent="Delete failed: "+msg;
-        console.error("deletePlay",err);
+        saved=previous;persist();renderSaved();const msg=err?.message||String(err);
+        if(sessionUser)$("#syncStatus").textContent="Delete failed: "+msg;else $("#authMessage").textContent="Delete failed: "+msg;console.error("deletePlay",err)
       }
     };
     row.append(load,share,del);box.append(row)
   })
 }
+document.querySelectorAll(".filter-tab").forEach(b=>b.onclick=()=>{playFilter=b.dataset.playFilter;renderSaved()});
+$("#playSort").onchange=e=>{playSort=e.target.value;renderSaved()};
 async function saveCurrentPlay(){
   const buttons=[$("#saveBtn"),$("#diagramSaveBtn")].filter(Boolean);
   if(buttons.some(b=>b.classList.contains("busy")))return;
@@ -529,7 +568,7 @@ async function saveCurrentPlay(){
 }
 if($("#saveBtn"))$("#saveBtn").onclick=saveCurrentPlay;
 $("#diagramSaveBtn").onclick=saveCurrentPlay;
-$("#newBtn").onclick=()=>{currentCloudId=null;personnel=clone(personnelByQuarter[selectedQuarter]);players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#playsDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
+$("#newBtn").onclick=()=>{currentCloudId=null;personnel=clone(personnelByQuarter[selectedQuarter]);players=clone(BASE);routes=emptyRoutes();fakes=emptyFakes();selected="H";$("#actionType").value="HANDOFF";$("#ballTarget").value="H";setName("New REBEL Play");$("#menuDialog").close();$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";choose("H",false)};
 async function loadCloudPlays(showStatus=true){
   if(!sessionUser)return;
   if(showStatus)$("#syncStatus").textContent="Syncing shared playbook…";
@@ -625,7 +664,6 @@ function loadSharedView(){
 }
 const isSharedView=loadSharedView();
 if(!isSharedView){
-  $("#personnelBtn").textContent="👥 Personnel · "+selectedQuarter;
   renderSaved();$("#actionType").value="HANDOFF";$("#ballTarget").value="H";$("#routeRail").classList.add("hidden");$("#routeToggle").textContent="Routes ▾";renderPersonnel();draw();refreshAuthUI();
 }
 if("serviceWorker" in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
