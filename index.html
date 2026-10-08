@@ -433,7 +433,7 @@ $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("
 function showMenuTab(tab){
   document.querySelectorAll(".menu-tab").forEach(b=>b.classList.toggle("active",b.dataset.menuTab===tab));
   $("#playsPanel").hidden=tab!=="plays";$("#personnelPanel").hidden=tab!=="personnel";$("#settingsPanel").hidden=tab!=="settings";
-  if(tab==="plays"){renderSaved();if(sessionUser)setTimeout(()=>{if(!$("#diagramSaveBtn")?.classList.contains("busy"))loadCloudPlays(false)},400)}
+  if(tab==="plays")renderSaved()
   if(tab==="personnel")renderPersonnel();
 }
 document.querySelectorAll(".menu-tab").forEach(b=>b.onclick=()=>showMenuTab(b.dataset.menuTab));
@@ -631,9 +631,9 @@ async function saveCurrentPlay(){
     }
     if(result&&result.data&&result.data.id){
       currentCloudId=result.data.id;
-      const cloudCopy={id:result.data.id,name:result.data.name,action:result.data.action,target:result.data.target,players:result.data.players,routes:result.data.routes,fakes:result.data.fakes,updated_at:result.data.updated_at};
+      const confirmedLocal={...localCopy,id:result.data.id,updated_at:result.data.updated_at,_localSavedAt:localCopy._localSavedAt};
       const idx=saved.findIndex(x=>x.id===currentCloudId||x.name===p.name);
-      if(idx>=0)saved[idx]=cloudCopy;else saved.push(cloudCopy);
+      if(idx>=0)saved[idx]=confirmedLocal;else saved.push(confirmedLocal);
       persist();renderSaved();
     }
     $("#syncStatus").textContent="Saved to shared playbook.";
@@ -658,35 +658,29 @@ async function loadCloudPlays(showStatus=true){
   if(!sessionUser)return;
   if(showStatus)$("#syncStatus").textContent="Syncing shared playbook…";
   const {data,error}=await cloud.from("plays").select("*").order("updated_at",{ascending:false});
-  if(error){$("#syncStatus").textContent="Sync failed. Showing saved phone copy.";return}
+  if(error){$("#syncStatus").textContent="Sync failed. Your phone copy is unchanged.";return}
   const rows=data||[],seen=new Map(),duplicateIds=[];
   for(const r of rows){
     const key=(r.name||"").trim().toLowerCase();
     if(!seen.has(key))seen.set(key,r); else duplicateIds.push(r.id);
   }
   const cloudRows=applyStoredPlayOrder([...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at})));
-  const localByKey=new Map(saved.map(p=>[playKey(p),p]));
-  const merged=[];
-  const seenKeys=new Set();
-  for(const cloudPlay of cloudRows){
-    const key=playKey(cloudPlay),local=localByKey.get(key);
-    if(local&&local._localSavedAt){
-      const cloudTime=cloudPlay.updated_at?new Date(cloudPlay.updated_at).getTime():0;
-      if(local._localSavedAt>cloudTime){merged.push(local);seenKeys.add(key);continue}
-    }
-    merged.push(cloudPlay);seenKeys.add(key);
+  const localIds=new Set(saved.map(p=>p.id).filter(Boolean));
+  const localNames=new Set(saved.map(p=>(p.name||"").trim().toLowerCase()));
+  let added=0;
+  for(const cp of cloudRows){
+    const name=(cp.name||"").trim().toLowerCase();
+    if((cp.id&&localIds.has(cp.id))||localNames.has(name))continue;
+    saved.push(cp);added++;
+    if(cp.id)localIds.add(cp.id);localNames.add(name)
   }
-  for(const local of saved){
-    const key=playKey(local);
-    if(!seenKeys.has(key)){merged.push(local);seenKeys.add(key)}
-  }
-  saved=applyStoredPlayOrder(merged);
+  saved=applyStoredPlayOrder(saved);
   persist();renderSaved();
   if(duplicateIds.length){
     const {error:dedupeError}=await cloud.from("plays").delete().in("id",duplicateIds);
-    if(dedupeError){$("#syncStatus").textContent="Synced. Duplicate cleanup failed.";return}
+    if(dedupeError){$("#syncStatus").textContent="Synced. Your local edits were preserved.";return}
   }
-  $("#syncStatus").textContent=duplicateIds.length?("Synced and removed "+duplicateIds.length+" duplicate"+(duplicateIds.length===1?"":"s")+"." ):"Shared playbook synced.";
+  $("#syncStatus").textContent=added?("Synced "+added+" new play"+(added===1?"":"s")+". Local edits were preserved."):"Synced. Local edits were preserved.";
 }
 let migrationRunning=false;
 async function migrateLocalPlays(){
@@ -715,9 +709,8 @@ async function refreshAuthUI(){
   if(sessionUser){
     $("#signedInAs").textContent="Signed in as "+(sessionUser.email||"coach");
     await migrateLocalPlays();
-    await loadCloudPlays(false);
-    if(cloudSyncTimer)clearInterval(cloudSyncTimer);
-    cloudSyncTimer=setInterval(()=>{if(document.visibilityState==="visible")loadCloudPlays(false)},30000);
+    if(cloudSyncTimer){clearInterval(cloudSyncTimer);cloudSyncTimer=null}
+    $("#syncStatus").textContent="Connected. Local play edits stay on this device until you press Sync Plays.";
   }else{
     if(cloudSyncTimer){clearInterval(cloudSyncTimer);cloudSyncTimer=null}
   }
@@ -734,7 +727,7 @@ $("#magicLinkBtn").onclick=async()=>{
 $("#signOutBtn").onclick=async()=>{await cloud.auth.signOut();sessionUser=null;currentCloudId=null;saved=loadSaved();renderSaved();await refreshAuthUI()};
 $("#refreshCloudBtn").onclick=()=>loadCloudPlays();
 cloud.auth.onAuthStateChange(()=>setTimeout(refreshAuthUI,0));
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&sessionUser)loadCloudPlays(false)});
+document.addEventListener("visibilitychange",()=>{});
 function loadSharedView(){
   if(!location.hash.startsWith("#share="))return false;
   const p=decodeSharePlay(location.hash.slice(7));
