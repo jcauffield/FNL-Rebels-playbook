@@ -433,7 +433,7 @@ $("#resetBtn").onclick=()=>{if(raf)cancelAnimationFrame(raf);raf=null;draw();$("
 function showMenuTab(tab){
   document.querySelectorAll(".menu-tab").forEach(b=>b.classList.toggle("active",b.dataset.menuTab===tab));
   $("#playsPanel").hidden=tab!=="plays";$("#personnelPanel").hidden=tab!=="personnel";$("#settingsPanel").hidden=tab!=="settings";
-  if(tab==="plays"){renderSaved();if(sessionUser)setTimeout(()=>loadCloudPlays(false),250)}
+  if(tab==="plays"){renderSaved();if(sessionUser)setTimeout(()=>{if(!$("#diagramSaveBtn")?.classList.contains("busy"))loadCloudPlays(false)},400)}
   if(tab==="personnel")renderPersonnel();
 }
 document.querySelectorAll(".menu-tab").forEach(b=>b.onclick=()=>showMenuTab(b.dataset.menuTab));
@@ -600,7 +600,7 @@ async function saveCurrentPlay(){
   if($("#saveBtn"))$("#saveBtn").textContent="Saving…";
   const p=snap();
   lastLocalSaveAt=Date.now();
-  const localCopy={...p,id:currentCloudId||p.id};
+  const localCopy={...p,id:currentCloudId||p.id,_localSavedAt:Date.now()};
   const localIndex=saved.findIndex(x=>(localCopy.id&&x.id===localCopy.id)||x.name===localCopy.name);
   if(localIndex>=0)saved[localIndex]=localCopy;else saved.push(localCopy);
   persist();renderSaved();
@@ -665,14 +665,22 @@ async function loadCloudPlays(showStatus=true){
     if(!seen.has(key))seen.set(key,r); else duplicateIds.push(r.id);
   }
   const cloudRows=applyStoredPlayOrder([...seen.values()].map(r=>({id:r.id,name:r.name,action:r.action,target:r.target,players:r.players,routes:r.routes,fakes:r.fakes,updated_at:r.updated_at})));
-  if(Date.now()-lastLocalSaveAt<2500){
-    const byId=new Map(cloudRows.map(r=>[r.id,r]));
-    saved=saved.map(local=>local.id&&byId.has(local.id)?local:local);
-    const existingIds=new Set(saved.map(x=>x.id).filter(Boolean));
-    for(const row of cloudRows)if(!existingIds.has(row.id))saved.push(row);
-  }else{
-    saved=cloudRows;
+  const localByKey=new Map(saved.map(p=>[playKey(p),p]));
+  const merged=[];
+  const seenKeys=new Set();
+  for(const cloudPlay of cloudRows){
+    const key=playKey(cloudPlay),local=localByKey.get(key);
+    if(local&&local._localSavedAt){
+      const cloudTime=cloudPlay.updated_at?new Date(cloudPlay.updated_at).getTime():0;
+      if(local._localSavedAt>cloudTime){merged.push(local);seenKeys.add(key);continue}
+    }
+    merged.push(cloudPlay);seenKeys.add(key);
   }
+  for(const local of saved){
+    const key=playKey(local);
+    if(!seenKeys.has(key)){merged.push(local);seenKeys.add(key)}
+  }
+  saved=applyStoredPlayOrder(merged);
   persist();renderSaved();
   if(duplicateIds.length){
     const {error:dedupeError}=await cloud.from("plays").delete().in("id",duplicateIds);
